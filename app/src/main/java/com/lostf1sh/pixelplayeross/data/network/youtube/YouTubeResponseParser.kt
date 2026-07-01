@@ -29,7 +29,7 @@ internal object YouTubeResponseParser {
     // ─────────────────────────── Search ───────────────────────────
 
     fun searchPage(root: JsonObject): YtSearchPage {
-        val tracks = LinkedHashMap<String, YtTrack>()
+        val entries = LinkedHashMap<String, YtShelfEntry>()
         var continuation: String? = null
 
         val shelves: List<JsonObject> =
@@ -44,12 +44,15 @@ internal object YouTubeResponseParser {
         for (shelf in shelves) {
             if (continuation == null) continuation = shelfContinuation(shelf)
             shelf.arr("contents")?.objects()?.forEach { row ->
-                row.obj("musicResponsiveListItemRenderer")
-                    ?.let(::trackFromListRow)
-                    ?.let { tracks.putIfAbsent(it.videoId, it) }
+                val listRow = row.obj("musicResponsiveListItemRenderer") ?: return@forEach
+                // A result row is either a playable track or a card linking to a page
+                // (album/artist/playlist searches return the latter).
+                val entry = trackFromListRow(listRow)?.let { YtShelfEntry.Track(it) }
+                    ?: listRowEntry(listRow)
+                entry?.let { entries.putIfAbsent(it.key, it) }
             }
         }
-        return YtSearchPage(tracks.values.toList(), continuation)
+        return YtSearchPage(entries.values.toList(), continuation)
     }
 
     fun searchSuggestions(root: JsonObject): List<String> =

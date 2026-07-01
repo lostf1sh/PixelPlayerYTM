@@ -118,12 +118,15 @@ data class YtFeedPage(
     val continuation: String? = null,
 )
 
-/** A page of search results. */
+/** A page of search results: tracks and/or album/artist/playlist cards, in server order. */
 @Immutable
 data class YtSearchPage(
-    val tracks: List<YtTrack>,
+    val entries: List<YtShelfEntry>,
     val continuation: String? = null,
-)
+) {
+    val tracks: List<YtTrack>
+        get() = entries.filterIsInstance<YtShelfEntry.Track>().map { it.track }
+}
 
 /** A page of a radio / up-next queue from the `next` endpoint. */
 @Immutable

@@ -1,6 +1,8 @@
 package com.lostf1sh.pixelplayeross.presentation.navigation
 
+import android.net.Uri
 import androidx.compose.runtime.Immutable
+import com.lostf1sh.pixelplayeross.data.model.YtPageKind
 
 
 @Immutable
@@ -40,6 +42,21 @@ sealed class Screen(val route: String) {
         fun createRoute(playlistId: String?) =
             if (playlistId != null) "edit_transition?playlistId=$playlistId" else "edit_transition"
     }
+
+    /** Generic YTM detail page — album, playlist, artist, or podcast by browseId. */
+    object YtPage : Screen("yt_page/{kind}/{browseId}") {
+        fun createRoute(kind: YtPageKind, browseId: String) =
+            "yt_page/${kind.name}/${Uri.encode(browseId)}"
+    }
+
+    /** Shelf feed behind one Explore mood/genre chip. */
+    object YtMood : Screen("yt_mood/{browseId}?params={params}&title={title}") {
+        fun createRoute(browseId: String, params: String?, title: String) =
+            "yt_mood/${Uri.encode(browseId)}?params=${Uri.encode(params.orEmpty())}&title=${Uri.encode(title)}"
+    }
+
+    /** Google sign-in via the TV device-code flow. */
+    object YtLogin : Screen("yt_login")
 
     object About : Screen("about")
     object EasterEgg : Screen("easter_egg")

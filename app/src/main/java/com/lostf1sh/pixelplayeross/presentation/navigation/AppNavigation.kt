@@ -53,6 +53,9 @@ import com.lostf1sh.pixelplayeross.presentation.screens.AboutScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SearchScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.StatsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SettingsScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.YtLoginScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.YtMoodScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.YtPageScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SettingsCategoryScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.EqualizerScreen
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerViewModel
@@ -398,6 +401,62 @@ fun AppNavigation(
                             playerViewModel = playerViewModel
                         )
                     }
+                }
+            }
+            composable(
+                route = Screen.YtPage.route,
+                arguments = listOf(
+                    navArgument("kind") { type = NavType.StringType },
+                    navArgument("browseId") { type = NavType.StringType },
+                ),
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) {
+                ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                    YtPageScreen(
+                        navController = navController,
+                        playerViewModel = playerViewModel
+                    )
+                }
+            }
+            composable(
+                route = Screen.YtMood.route,
+                arguments = listOf(
+                    navArgument("browseId") { type = NavType.StringType },
+                    navArgument("params") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("title") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) {
+                ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                    YtMoodScreen(
+                        navController = navController,
+                        playerViewModel = playerViewModel
+                    )
+                }
+            }
+            composable(
+                Screen.YtLogin.route,
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) {
+                ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                    YtLoginScreen(navController = navController)
                 }
             }
             composable(
