@@ -53,7 +53,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
 
-import com.lostf1sh.pixelplayeross.data.navidrome.NavidromeStreamProxy
 
 data class ActiveDecoderInfo(
     val name: String,
@@ -168,9 +167,7 @@ internal fun shouldDisableAudioOffloadOnEarlyBuffering(
 @OptIn(UnstableApi::class)
 @Singleton
 class DualPlayerEngine @Inject constructor(
-    @param:ApplicationContext private val context: Context,
-    private val navidromeStreamProxy: NavidromeStreamProxy,
-    private val jellyfinStreamProxy: com.lostf1sh.pixelplayeross.data.jellyfin.JellyfinStreamProxy
+    @param:ApplicationContext private val context: Context
 ) {
     private companion object {
         private const val AUDIO_OFFLOAD_STALL_FALLBACK_MS = 4_000L
@@ -182,10 +179,11 @@ class DualPlayerEngine @Inject constructor(
         private const val POST_TRANSITION_OFFLOAD_GUARD_MS = 2_000L
         private const val MAX_AUXILIARY_TIMELINE_ITEMS = 200
         private val LOCAL_MEDIA_SCHEMES = setOf("content", "file", "android.resource")
-        private val REMOTE_MEDIA_SCHEMES = setOf("http", "https", "navidrome", "jellyfin")
+        private val REMOTE_MEDIA_SCHEMES = setOf("http", "https", "ytm")
         // Subset of REMOTE_MEDIA_SCHEMES: schemes that need proxy resolution.
         // http/https resolve directly and must NOT enter the resolvedUriCache lookup path.
-        private val CLOUD_PROXY_SCHEMES = setOf("navidrome", "jellyfin")
+        // NOTE(ytm-pivot M1): the ytm:// proxy lands in M3; until then resolution no-ops.
+        private val CLOUD_PROXY_SCHEMES = setOf("ytm")
     }
 
     data class TransitionTarget(
@@ -947,17 +945,8 @@ class DualPlayerEngine @Inject constructor(
     }
 
     private fun resolveReadyCloudProxyUri(uri: Uri): Uri? {
-        val uriString = uri.toString()
-        val proxyUrl = when (uri.scheme) {
-            "navidrome" -> navidromeStreamProxy
-                .takeIf { it.isReady() }
-                ?.resolveNavidromeUri(uriString)
-            "jellyfin" -> jellyfinStreamProxy
-                .takeIf { it.isReady() }
-                ?.resolveJellyfinUri(uriString)
-            else -> null
-        }
-        return proxyUrl?.let(Uri::parse)
+        // NOTE(ytm-pivot M1): YouTubeStreamProxy dispatch lands in M3.
+        return null
     }
 
     private fun getOrCreateAuxiliaryPlayer(): ExoPlayer {
@@ -1008,29 +997,14 @@ class DualPlayerEngine @Inject constructor(
         val uriString = uri.toString()
         resolvedUriCache.get(uriString)?.let { return@withContext it }
 
-        val resolved: Uri? = when (uri.scheme) {
-            "navidrome" -> resolveNavidromeUriAsync(uriString)
-            "jellyfin" -> resolveJellyfinUriAsync(uriString)
-            else -> null
-        }
+        // NOTE(ytm-pivot M1): YouTubeStreamProxy async resolution lands in M3.
+        val resolved: Uri? = null
 
         if (resolved != null) {
             resolvedUriCache.put(uriString, resolved)
             return@withContext resolved
         }
         uri
-    }
-
-    private suspend fun resolveNavidromeUriAsync(uriString: String): Uri? = withContext(Dispatchers.IO) {
-        if (!navidromeStreamProxy.ensureReady(5_000L)) return@withContext null
-        navidromeStreamProxy.warmUpStreamUrl(uriString)
-        navidromeStreamProxy.resolveNavidromeUri(uriString)?.let { Uri.parse(it) }
-    }
-
-    private suspend fun resolveJellyfinUriAsync(uriString: String): Uri? = withContext(Dispatchers.IO) {
-        if (!jellyfinStreamProxy.ensureReady(5_000L)) return@withContext null
-        jellyfinStreamProxy.warmUpStreamUrl(uriString)
-        jellyfinStreamProxy.resolveJellyfinUri(uriString)?.let { Uri.parse(it) }
     }
 
     suspend fun resolveMediaItem(mediaItem: MediaItem): MediaItem {

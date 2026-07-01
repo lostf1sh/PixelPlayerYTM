@@ -249,11 +249,9 @@ interface MusicDao {
     """)
     suspend fun refreshAlbumSongCounts()
 
-    @Query("SELECT id FROM songs WHERE source_type = 5")
-    suspend fun getAllNavidromeSongIds(): List<Long>
-
-    @Query("SELECT id FROM songs WHERE source_type = 6")
-    suspend fun getAllJellyfinSongIds(): List<Long>
+    /** IDs of all songs that did not come from the local MediaStore (streaming sources). */
+    @Query("SELECT id FROM songs WHERE source_type != 0")
+    suspend fun getAllNonLocalSongIds(): List<Long>
 
     @Transaction
     suspend fun deleteSongsAndRelatedData(songIds: List<Long>) {
@@ -268,20 +266,6 @@ interface MusicDao {
         deleteOrphanedArtists()
         refreshAlbumSongCounts()
         refreshArtistTrackCounts()
-    }
-
-    @Transaction
-    suspend fun clearAllNavidromeSongs() {
-        val navidromeSongIds = getAllNavidromeSongIds()
-        if (navidromeSongIds.isEmpty()) return
-        deleteSongsAndRelatedData(navidromeSongIds)
-    }
-
-    @Transaction
-    suspend fun clearAllJellyfinSongs() {
-        val jellyfinSongIds = getAllJellyfinSongIds()
-        if (jellyfinSongIds.isEmpty()) return
-        deleteSongsAndRelatedData(jellyfinSongIds)
     }
 
     /**
@@ -542,28 +526,6 @@ interface MusicDao {
         allowedParentDirs: List<String>,
         applyDirectoryFilter: Boolean
     ): Flow<List<SongEntity>>
-
-    @Query("""
-        SELECT id, parent_directory_path, title, album_art_uri_string FROM songs
-        WHERE (:applyDirectoryFilter = 0 OR id < 0 OR parent_directory_path IN (:allowedParentDirs))
-        AND (
-            :filterMode = 0
-            OR (
-                :filterMode = 1
-                AND source_type = 0
-            )
-            OR (
-                :filterMode = 2
-                AND source_type != 0
-            )
-        )
-        ORDER BY parent_directory_path ASC, title ASC
-    """)
-    fun getFolderSongs(
-        allowedParentDirs: List<String> = emptyList(),
-        applyDirectoryFilter: Boolean = false,
-        filterMode: Int
-    ): Flow<List<FolderSongRow>>
 
     @Query("""
         SELECT id FROM songs

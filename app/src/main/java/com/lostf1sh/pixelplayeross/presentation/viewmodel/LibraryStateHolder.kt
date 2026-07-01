@@ -299,16 +299,10 @@ class LibraryStateHolder @Inject constructor(
             }
         }
 
+        // NOTE(ytm-pivot M1): the folder tree was removed with the pivot; the Folders tab is
+        // starved with an empty list until the Library rework (M5) removes it entirely.
         foldersJob = scope?.launch {
-            @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-            effectiveStorageFilter.flatMapLatest { filter ->
-                musicRepository.getMusicFolders(effectiveFoldersStorageFilter(filter))
-            }.conflate().collect { folders ->
-                val sortedFolders = withContext(Dispatchers.Default) {
-                    sortFoldersList(folders, _currentFolderSortOption.value).toImmutableList()
-                }
-                _musicFolders.value = sortedFolders
-            }
+            _musicFolders.value = emptyList<MusicFolder>().toImmutableList()
         }
     }
 

@@ -146,8 +146,7 @@ class SongInfoBottomSheetViewModel @Inject constructor(
     private fun getCloudProviderLabel(contentUriString: String): String? {
         val normalized = contentUriString.lowercase().trim()
         return when {
-            normalized.startsWith("navidrome://") || normalized.startsWith("navidrome:") -> "Navidrome"
-            normalized.startsWith("jellyfin://") || normalized.startsWith("jellyfin:") -> "Jellyfin"
+            normalized.startsWith("ytm://") || normalized.startsWith("ytm:") -> "YouTube Music"
             else -> null
         }
     }

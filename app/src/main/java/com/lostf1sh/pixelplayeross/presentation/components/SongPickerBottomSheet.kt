@@ -304,11 +304,11 @@ fun SongPickerSelectionPane(
             .map { songs ->
                 when (storageFilter) {
                     StorageFilter.OFFLINE -> songs.filter { s ->
-                        s.navidromeId == null && s.jellyfinId == null
+                        !s.contentUriString.startsWith("ytm://")
                     }
 
                     StorageFilter.ONLINE -> songs.filter { s ->
-                        s.navidromeId != null || s.jellyfinId != null
+                        s.contentUriString.startsWith("ytm://")
                     }
 
                     else -> songs

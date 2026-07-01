@@ -3165,10 +3165,7 @@ class PlayerViewModel @Inject constructor(
         val mediaItem = MediaItemBuilder.build(song)
         val originalUri = mediaItem.localConfiguration?.uri ?: return mediaItem
         val scheme = originalUri.scheme
-        if (
-            scheme != "navidrome" &&
-            scheme != "jellyfin"
-        ) {
+        if (scheme != "ytm") {
             return mediaItem
         }
 

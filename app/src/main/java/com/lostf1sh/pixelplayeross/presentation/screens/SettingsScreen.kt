@@ -218,7 +218,7 @@ fun SettingsScreen(
                         it != SettingsCategory.DEVICE_CAPABILITIES
                     }
 
-                    val totalItems = mainCategories.size + 3 // Device + Accounts + About
+                    val totalItems = mainCategories.size + 2 // Device + About
                     fun shapeFor(index: Int) =
                         when {
                             totalItems == 1 -> RoundedCornerShape(24.dp)
@@ -254,19 +254,6 @@ fun SettingsScreen(
                         category = SettingsCategory.DEVICE_CAPABILITIES,
                         customColors = getCategoryColors(SettingsCategory.DEVICE_CAPABILITIES, isDark),
                         onClick = { navController.navigateSafely(Screen.DeviceCapabilities.route) },
-                        shape = shapeFor(itemIndex)
-                    )
-                    if (itemIndex < totalItems - 1) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                    }
-                    itemIndex++
-
-                    ExpressiveNavigationItem(
-                        title = stringResource(R.string.settings_accounts_row_title),
-                        subtitle = stringResource(R.string.settings_accounts_row_subtitle),
-                        icon = Icons.Rounded.AccountCircle,
-                        colors = getAccountsColors(isDark),
-                        onClick = { navController.navigateSafely(Screen.Accounts.route) },
                         shape = shapeFor(itemIndex)
                     )
                     if (itemIndex < totalItems - 1) {

@@ -33,13 +33,11 @@ import com.lostf1sh.pixelplayeross.data.model.Artist
 import com.lostf1sh.pixelplayeross.data.model.Genre
 import com.lostf1sh.pixelplayeross.data.model.Lyrics
 import com.lostf1sh.pixelplayeross.data.model.LyricsSourcePreference
-import com.lostf1sh.pixelplayeross.data.model.MusicFolder
 import com.lostf1sh.pixelplayeross.data.model.Playlist
 import com.lostf1sh.pixelplayeross.data.model.SearchFilterType
 import com.lostf1sh.pixelplayeross.data.model.SearchHistoryItem
 import com.lostf1sh.pixelplayeross.data.model.SearchResultItem
 import com.lostf1sh.pixelplayeross.data.model.SortOption
-import com.lostf1sh.pixelplayeross.data.model.FolderSource
 import com.lostf1sh.pixelplayeross.data.model.StorageFilter
 import com.lostf1sh.pixelplayeross.data.preferences.PlaylistPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
@@ -89,8 +87,7 @@ class MusicRepositoryImpl @Inject constructor(
     private val lyricsRepository: LyricsRepository,
     private val songRepository: SongRepository,
     private val favoritesDao: FavoritesDao,
-    private val artistImageRepository: ArtistImageRepository,
-    private val folderTreeBuilder: FolderTreeBuilder
+    private val artistImageRepository: ArtistImageRepository
 ) : MusicRepository {
 
     companion object {
@@ -897,52 +894,6 @@ class MusicRepositoryImpl @Inject constructor(
     override suspend fun resetAllLyrics() {
         lyricsRepository.resetAllLyrics()
     }
-
-    override fun getMusicFolders(storageFilter: StorageFilter): Flow<List<MusicFolder>> {
-        return combine(
-            userPreferencesRepository.allowedDirectoriesFlow,
-            userPreferencesRepository.blockedDirectoriesFlow,
-            userPreferencesRepository.isFolderFilterActiveFlow,
-            userPreferencesRepository.foldersSourceFlow
-        ) { allowedDirs, blockedDirs, isFolderFilterActive, folderSource ->
-            FolderFlowConfig(
-                allowedDirs = allowedDirs,
-                blockedDirs = blockedDirs,
-                isFolderFilterActive = isFolderFilterActive,
-                folderSource = folderSource
-            )
-        }.flatMapLatest { config ->
-            flow {
-                val (allowedParentDirs, applyDirectoryFilter) = computeAllowedDirs(
-                    allowedDirs = config.allowedDirs,
-                    blockedDirs = config.blockedDirs
-                )
-                emit(
-                    musicDao.getFolderSongs(
-                        allowedParentDirs = allowedParentDirs,
-                        applyDirectoryFilter = applyDirectoryFilter,
-                        filterMode = storageFilter.toFilterMode()
-                    ).map { folderSongs ->
-                        folderTreeBuilder.buildFolderTree(
-                            folderSongs = folderSongs,
-                            allowedDirs = config.allowedDirs,
-                            blockedDirs = config.blockedDirs,
-                            isFolderFilterActive = config.isFolderFilterActive,
-                            folderSource = config.folderSource,
-                            context = context
-                        )
-                    }
-                )
-            }.flatMapLatest { it }
-        }.conflate().flowOn(Dispatchers.IO)
-    }
-
-    private data class FolderFlowConfig(
-        val allowedDirs: Set<String>,
-        val blockedDirs: Set<String>,
-        val isFolderFilterActive: Boolean,
-        val folderSource: FolderSource
-    )
 
     override suspend fun deleteById(id: Long) {
         musicDao.deleteById(id)

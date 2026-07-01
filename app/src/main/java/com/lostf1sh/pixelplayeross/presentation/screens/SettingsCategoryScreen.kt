@@ -470,13 +470,6 @@ fun SettingsCategoryScreen(
                                     onCheckedChange = { settingsViewModel.setAutoScanLrcFiles(it) },
                                     leadingIcon = { Icon(Icons.Outlined.Folder, null, tint = MaterialTheme.colorScheme.secondary) }
                                 )
-                                SettingsItem(
-                                    title = stringResource(R.string.setcat_find_duplicates_title),
-                                    subtitle = stringResource(R.string.setcat_find_duplicates_subtitle),
-                                    leadingIcon = { Icon(Icons.Outlined.Folder, null, tint = MaterialTheme.colorScheme.secondary) },
-                                    trailingIcon = { Icon(Icons.Rounded.ChevronRight, stringResource(R.string.cd_open), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                                    onClick = { navController.navigateSafely(Screen.Duplicates.route) }
-                                )
                             }
 
                             SettingsSubsection(title = stringResource(R.string.setcat_online_services)) {

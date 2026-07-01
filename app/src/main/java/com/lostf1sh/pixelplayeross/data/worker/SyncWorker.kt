@@ -67,8 +67,7 @@ constructor(
         @Assisted workerParams: WorkerParameters,
         private val musicDao: MusicDao,
         private val userPreferencesRepository: UserPreferencesRepository,
-        private val lyricsRepository: LyricsRepository,
-        private val cloudSyncCoordinator: CloudSyncCoordinator
+        private val lyricsRepository: LyricsRepository
 ) : CoroutineWorker(appContext, workerParams) {
 
     private val contentResolver: ContentResolver = appContext.contentResolver
@@ -426,16 +425,6 @@ constructor(
                     )
                     val allSongIds = musicDao.getAllSongIds().toSet()
                     AlbumArtCacheManager.cleanOrphanedCacheFiles(applicationContext, allSongIds)
-
-                    if (cloudSyncCoordinator.needsActiveCloudSync) {
-                        setProgress(
-                            workDataOf(
-                                PROGRESS_PHASE to SyncProgress.SyncPhase.SYNCING_CLOUD.ordinal
-                            )
-                        )
-                    }
-
-                    cloudSyncCoordinator.syncUnifiedCloudLibraries()
 
                     // Recalculate total
                     val finalTotalSongs = musicDao.getSongCount().first()

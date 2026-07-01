@@ -323,10 +323,6 @@ interface MusicRepository {
 
     suspend fun resetAllLyrics()
 
-    fun getMusicFolders(
-        storageFilter: com.lostf1sh.pixelplayeross.data.model.StorageFilter = com.lostf1sh.pixelplayeross.data.model.StorageFilter.ALL
-    ): Flow<List<com.lostf1sh.pixelplayeross.data.model.MusicFolder>>
-
     suspend fun deleteById(id: Long)
 
     suspend fun getSongIdsSorted(

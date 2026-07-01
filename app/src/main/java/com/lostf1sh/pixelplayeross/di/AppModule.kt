@@ -23,6 +23,7 @@ import com.lostf1sh.pixelplayeross.data.database.FavoritesDao
 import com.lostf1sh.pixelplayeross.data.database.LyricsDao
 import com.lostf1sh.pixelplayeross.data.database.LocalPlaylistDao
 import com.lostf1sh.pixelplayeross.data.database.MIGRATION_1_2
+import com.lostf1sh.pixelplayeross.data.database.MIGRATION_2_3
 import com.lostf1sh.pixelplayeross.data.database.MusicDao
 import com.lostf1sh.pixelplayeross.data.database.PixelPlayerDatabase
 import com.lostf1sh.pixelplayeross.data.database.SearchHistoryDao
@@ -31,7 +32,6 @@ import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.preferences.PlaylistPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.preferences.dataStore
 import com.lostf1sh.pixelplayeross.data.media.SongMetadataEditor
-import com.lostf1sh.pixelplayeross.data.network.deezer.DeezerApiService
 import com.lostf1sh.pixelplayeross.data.network.lyrics.LrcLibApiService
 import com.lostf1sh.pixelplayeross.data.repository.ArtistImageRepository
 import com.lostf1sh.pixelplayeross.data.repository.LyricsRepository
@@ -42,7 +42,6 @@ import com.lostf1sh.pixelplayeross.data.repository.MusicRepositoryImpl
 import com.lostf1sh.pixelplayeross.data.repository.SongRepository
 import com.lostf1sh.pixelplayeross.data.repository.TransitionRepository
 import com.lostf1sh.pixelplayeross.data.repository.TransitionRepositoryImpl
-import com.lostf1sh.pixelplayeross.data.repository.FolderTreeBuilder
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -124,7 +123,7 @@ object AppModule {
             "pixelplayer_database"
         )
             .addCallback(PixelPlayerDatabase.createRuntimeArtifactsCallback())
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
 
         // P2-4: Only allow destructive recreation in debug builds.
@@ -184,18 +183,6 @@ object AppModule {
     @Provides
     fun provideLocalPlaylistDao(database: PixelPlayerDatabase): LocalPlaylistDao {
         return database.localPlaylistDao()
-    }
-
-    @Singleton
-    @Provides
-    fun provideNavidromeDao(database: PixelPlayerDatabase): com.lostf1sh.pixelplayeross.data.database.NavidromeDao {
-        return database.navidromeDao()
-    }
-    
-    @Singleton
-    @Provides
-    fun provideJellyfinDao(database: PixelPlayerDatabase): com.lostf1sh.pixelplayeross.data.database.JellyfinDao {
-        return database.jellyfinDao()
     }
 
     @Provides
@@ -272,12 +259,6 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideFolderTreeBuilder(): FolderTreeBuilder {
-        return FolderTreeBuilder()
-    }
-
-    @Provides
-    @Singleton
     fun provideMusicRepository(
         @ApplicationContext context: Context,
         userPreferencesRepository: UserPreferencesRepository,
@@ -287,8 +268,7 @@ object AppModule {
         lyricsRepository: LyricsRepository,
         songRepository: SongRepository,
         favoritesDao: FavoritesDao,
-        artistImageRepository: ArtistImageRepository,
-        folderTreeBuilder: FolderTreeBuilder
+        artistImageRepository: ArtistImageRepository
     ): MusicRepository {
         return MusicRepositoryImpl(
             context = context,
@@ -299,8 +279,7 @@ object AppModule {
             lyricsRepository = lyricsRepository,
             songRepository = songRepository,
             favoritesDao = favoritesDao,
-            artistImageRepository = artistImageRepository,
-            folderTreeBuilder = folderTreeBuilder
+            artistImageRepository = artistImageRepository
         )
 
     }
@@ -344,9 +323,6 @@ object AppModule {
             redactHeader("Proxy-Authorization")
             redactHeader("Cookie")
             redactHeader("Set-Cookie")
-            redactHeader("X-Emby-Token")
-            redactHeader("X-Emby-Authorization")
-            redactHeader("X-MediaBrowser-Token")
         }
         
         // Connection pool with optimized connections for better performance
@@ -461,38 +437,14 @@ object AppModule {
     }
 
     /**
-     * Provides a Retrofit instance for the Deezer API.
-     */
-    @Provides
-    @Singleton
-    @DeezerRetrofit
-    fun provideDeezerRetrofit(okHttpClient: OkHttpClient): Retrofit {
-        return Retrofit.Builder()
-            .baseUrl("https://api.deezer.com/")
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-    }
-
-    /**
-     * Provides the Deezer API service.
-     */
-    @Provides
-    @Singleton
-    fun provideDeezerApiService(@DeezerRetrofit retrofit: Retrofit): DeezerApiService {
-        return retrofit.create(DeezerApiService::class.java)
-    }
-
-    /**
-     * Provides the artist image repository.
+     * Provides the artist image repository (custom user-set images only after the YTM pivot).
      */
     @Provides
     @Singleton
     fun provideArtistImageRepository(
-        deezerApiService: DeezerApiService,
         musicDao: MusicDao,
         userPreferencesRepository: UserPreferencesRepository
     ): ArtistImageRepository {
-        return ArtistImageRepository(deezerApiService, musicDao, userPreferencesRepository)
+        return ArtistImageRepository(musicDao, userPreferencesRepository)
     }
 }

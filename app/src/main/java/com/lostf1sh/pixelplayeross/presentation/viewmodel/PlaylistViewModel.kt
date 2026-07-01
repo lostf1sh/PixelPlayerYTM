@@ -159,48 +159,15 @@ class PlaylistViewModel @Inject constructor(
             } // Reset details and songs
             try {
                 if (isFolderPlaylistId(playlistId)) {
-                    val folderPath = Uri.decode(playlistId.removePrefix(FOLDER_PLAYLIST_PREFIX))
-                    val folders = musicRepository.getMusicFolders().first()
-                    val folder = findFolder(folderPath, folders)
-
-                    if (folder != null) {
-                        val songsList = withContext(Dispatchers.IO) {
-                            val rawSongs = folder.collectAllSongs()
-                            if (rawSongs.any { it.contentUriString.isBlank() }) {
-                                musicRepository.getSongsByIds(rawSongs.map { it.id }).first()
-                            } else {
-                                rawSongs
-                            }
-                        }
-                        val pseudoPlaylist = Playlist(
-                            id = playlistId,
-                            name = folder.name,
-                            songIds = songsList.map { it.id }
+                    // NOTE(ytm-pivot M1): folder playlists no longer exist; stale ids resolve to nothing.
+                    Timber.tag("PlaylistVM").w("Folder playlist id $playlistId is no longer supported.")
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            playlistNotFound = true,
+                            currentPlaylistDetails = null,
+                            currentPlaylistSongs = emptyList()
                         )
-
-                        val folderSortOption = _uiState.value.currentPlaylistSongsSortOption
-                        val sortedFolderSongs = withContext(Dispatchers.Default) {
-                            applySortToSongs(songsList, folderSortOption)
-                        }
-                        _uiState.update {
-                            it.copy(
-                                currentPlaylistDetails = pseudoPlaylist,
-                                currentPlaylistSongs = sortedFolderSongs,
-                                playlistSongsOrderMode = PlaylistSongsOrderMode.Sorted(folderSortOption),
-                                isLoading = false,
-                                playlistNotFound = false
-                            )
-                        }
-                    } else {
-                        Timber.tag("PlaylistVM").w("Folder playlist with path $folderPath not found.")
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                playlistNotFound = true,
-                                currentPlaylistDetails = null,
-                                currentPlaylistSongs = emptyList()
-                            )
-                        }
                     }
                 } else {
                     // Get the playlist from the user's preferences

@@ -10,10 +10,8 @@ import androidx.annotation.RequiresApi
 import com.lostf1sh.pixelplayeross.MainActivity
 import com.lostf1sh.pixelplayeross.MainActivityIntentContract
 import com.lostf1sh.pixelplayeross.R
-import com.lostf1sh.pixelplayeross.data.model.MusicFolder
 import com.lostf1sh.pixelplayeross.data.preferences.PlaylistPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
-import com.lostf1sh.pixelplayeross.data.repository.MusicRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -45,7 +43,6 @@ class LastPlaylistTileService : TileService() {
     @EntryPoint
     @InstallIn(SingletonComponent::class)
     interface LastPlaylistTileEntryPoint {
-        fun musicRepository(): MusicRepository
         fun playlistPreferencesRepository(): PlaylistPreferencesRepository
         fun userPreferencesRepository(): UserPreferencesRepository
     }
@@ -66,15 +63,6 @@ class LastPlaylistTileService : TileService() {
             LastPlaylistTileEntryPoint::class.java
         )
         entryPoint.playlistPreferencesRepository()
-    }
-
-    private val musicRepo: MusicRepository by lazy {
-        val appContext = applicationContext
-        val entryPoint = EntryPointAccessors.fromApplication(
-            appContext,
-            LastPlaylistTileEntryPoint::class.java
-        )
-        entryPoint.musicRepository()
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -132,34 +120,15 @@ class LastPlaylistTileService : TileService() {
 
     private suspend fun resolveLaunchablePlaylistId(): String? {
         val storedPlaylistId = prefsRepo.lastPlaylistIdFlow.first() ?: return null
-        val isValid = if (storedPlaylistId.startsWith(FOLDER_PLAYLIST_PREFIX)) {
-            hasExistingFolderPlaylist(storedPlaylistId)
-        } else {
+        // Folder-derived playlists were removed with the YTM pivot; treat stale ids as invalid.
+        val isValid = !storedPlaylistId.startsWith(FOLDER_PLAYLIST_PREFIX) &&
             playlistRepo.getPlaylistsOnce().any { playlist -> playlist.id == storedPlaylistId }
-        }
 
         if (isValid) {
             return storedPlaylistId
         }
 
         prefsRepo.clearLastPlaylist()
-        return null
-    }
-
-    private suspend fun hasExistingFolderPlaylist(playlistId: String): Boolean {
-        val folderPath = Uri.decode(playlistId.removePrefix(FOLDER_PLAYLIST_PREFIX))
-        return findFolder(folderPath, musicRepo.getMusicFolders().first()) != null
-    }
-
-    private fun findFolder(targetPath: String, folders: List<MusicFolder>): MusicFolder? {
-        val queue = ArrayDeque(folders)
-        while (queue.isNotEmpty()) {
-            val folder = queue.removeFirst()
-            if (folder.path == targetPath) {
-                return folder
-            }
-            folder.subFolders.forEach(queue::addLast)
-        }
         return null
     }
 }

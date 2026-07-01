@@ -15,8 +15,8 @@ object CloudStreamSecurity {
     private const val MAX_RANGE_HEADER_LENGTH = 64
     private const val MAX_RANGE_VALUE_BYTES = 8L * 1024L * 1024L * 1024L
 
-    private val NAVIDROME_SONG_ID_REGEX = Regex("^[A-Za-z0-9_-]{1,100}$")
-    private val JELLYFIN_ITEM_ID_REGEX = Regex("^[A-Za-z0-9]{1,100}$")
+    /** YouTube video ids are exactly 11 URL-safe base64 characters. */
+    private val YOUTUBE_VIDEO_ID_REGEX = Regex("^[A-Za-z0-9_-]{11}$")
     private val FORBIDDEN_HOSTS = setOf("localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]")
     private val EXTRA_ALLOWED_AUDIO_TYPES = setOf(
         "application/octet-stream",
@@ -33,9 +33,7 @@ object CloudStreamSecurity {
         val isSuffixRange: Boolean = false
     )
 
-    fun validateNavidromeSongId(songId: String): Boolean = NAVIDROME_SONG_ID_REGEX.matches(songId)
-
-    fun validateJellyfinItemId(itemId: String): Boolean = JELLYFIN_ITEM_ID_REGEX.matches(itemId)
+    fun validateYouTubeVideoId(videoId: String): Boolean = YOUTUBE_VIDEO_ID_REGEX.matches(videoId)
 
     fun validateRangeHeader(rawHeader: String?): RangeHeaderValidation {
         if (rawHeader.isNullOrBlank()) {
