@@ -22,3 +22,18 @@ annotation class BackupGson
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class AppScope
+
+/**
+ * OkHttpClient for YouTube/InnerTube calls, with the auth interceptor installed.
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class YouTubeHttp
+
+/**
+ * Unauthenticated OkHttpClient for the YouTube OAuth token endpoints — must NOT carry
+ * the auth interceptor (it is what the interceptor itself uses to refresh tokens).
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class YouTubeBaseHttp
