@@ -39,8 +39,8 @@ import kotlin.coroutines.resumeWithException
  * Responses are returned as a parsed [JsonObject] tree — InnerTube's renderer soup has
  * no stable schema worth modelling, so the parser layer walks the tree defensively.
  *
- * Auth (OAuth Bearer / cookie SAPISIDHASH) is attached by the interceptor on the
- * injected [YouTubeHttp] client, not here.
+ * Auth (cookie + SAPISIDHASH) is attached by the interceptor on the injected
+ * [YouTubeHttp] client, not here.
  */
 @Singleton
 class InnerTubeService @Inject constructor(
@@ -73,9 +73,8 @@ class InnerTubeService @Inject constructor(
             payload()
         }
 
-        // The `key` query param authenticates the *app*; when the interceptor attaches a
-        // user Bearer token it removes this param again — sending both makes Google pick
-        // the key and silently drop the user identity (empty library, anonymous feed).
+        // The `key` query param identifies the client app. It coexists fine with cookie
+        // (SAPISIDHASH) auth — the web client sends both — so the interceptor leaves it.
         val url = "$API_BASE$endpoint".toHttpUrl().newBuilder()
             .addQueryParameter("key", client.apiKey)
             .addQueryParameter("prettyPrint", "false")

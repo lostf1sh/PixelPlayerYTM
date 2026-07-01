@@ -1,11 +1,14 @@
 package com.lostf1sh.pixelplayeross.presentation.screens
 
-import android.content.Intent
+import android.annotation.SuppressLint
+import android.webkit.CookieManager
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -14,65 +17,40 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.OpenInBrowser
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
-import com.lostf1sh.pixelplayeross.presentation.components.youtube.YtErrorBox
-import com.lostf1sh.pixelplayeross.presentation.components.youtube.ytSmoothShape
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.YtLoginViewModel
 
 /**
- * Google sign-in via the TV device-code flow: show a short code, send the user to
- * youtube.com/activate in a real browser, poll until authorized. If already signed in,
- * offers sign-out instead.
+ * Google sign-in via an in-app WebView. Google blocks account login inside default
+ * WebViews ("this browser may not be secure"), so we spoof a desktop Chrome UA. Once
+ * the user lands on music.youtube.com signed in, the cookie jar carries a SAPISID
+ * session; we capture it and persist. If already signed in, offers sign-out instead.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun YtLoginScreen(
     navController: NavHostController,
     viewModel: YtLoginViewModel = hiltViewModel(),
 ) {
     val isSignedIn by viewModel.isSignedIn.collectAsStateWithLifecycle()
-    val step by viewModel.step.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-
-    LaunchedEffect(isSignedIn) {
-        if (!isSignedIn) viewModel.start()
-    }
-
-    // Pop back automatically shortly after a successful sign-in.
-    LaunchedEffect(step) {
-        if (step is YtLoginViewModel.Step.Success) {
-            kotlinx.coroutines.delay(800L)
-            navController.popBackStack()
-        }
-    }
 
     Scaffold(
         topBar = {
@@ -89,150 +67,110 @@ fun YtLoginScreen(
             )
         },
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .padding(horizontal = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            when {
-                isSignedIn -> SignedInContent(onSignOut = viewModel::signOut)
-
-                else -> when (val current = step) {
-                    YtLoginViewModel.Step.Preparing -> {
-                        LoadingIndicator(
-                            modifier = Modifier.size(96.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.height(24.dp))
-                        Text(
-                            text = "Getting a sign-in code…",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+        if (isSignedIn) {
+            SignedInContent(
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .fillMaxSize()
+                    .padding(horizontal = 32.dp),
+                onSignOut = {
+                    // Drop the WebView's cookie jar too — otherwise reopening this screen
+                    // silently re-captures the just-signed-out session.
+                    CookieManager.getInstance().removeAllCookies(null)
+                    viewModel.signOut()
+                },
+            )
+        } else {
+            LoginWebView(
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .fillMaxSize(),
+                onCookieCaptured = { cookie ->
+                    if (viewModel.onCookiesCaptured(cookie)) {
+                        navController.popBackStack()
                     }
-
-                    is YtLoginViewModel.Step.CodeReady -> CodeContent(
-                        userCode = current.userCode,
-                        onOpenBrowser = {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, current.verificationUrl.toUri())
-                                )
-                            }
-                        },
-                    )
-
-                    YtLoginViewModel.Step.Success -> {
-                        Icon(
-                            imageVector = Icons.Rounded.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(72.dp),
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            text = "Signed in!",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-
-                    is YtLoginViewModel.Step.Failed -> YtErrorBox(
-                        message = current.message,
-                        onRetry = viewModel::retry,
-                    )
-                }
-            }
+                },
+            )
         }
     }
 }
 
+@SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun CodeContent(
-    userCode: String,
-    onOpenBrowser: () -> Unit,
+private fun LoginWebView(
+    modifier: Modifier,
+    onCookieCaptured: (String?) -> Unit,
 ) {
-    Text(
-        text = "Sign in with Google",
-        style = MaterialTheme.typography.headlineSmall,
-        fontWeight = FontWeight.Bold,
-        textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(12.dp))
-    Text(
-        text = "Open youtube.com/activate on any device and enter this code:",
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(24.dp))
-    Surface(
-        shape = remember { ytSmoothShape(24.dp) },
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-    ) {
-        Text(
-            text = userCode,
-            style = MaterialTheme.typography.displaySmall.copy(
-                fontFamily = FontFamily.Monospace,
-                letterSpacing = 4.sp,
-            ),
-            modifier = Modifier.padding(horizontal = 28.dp, vertical = 20.dp),
-        )
-    }
-    Spacer(Modifier.height(32.dp))
-    Button(
-        onClick = onOpenBrowser,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Icon(
-            imageVector = Icons.Rounded.OpenInBrowser,
-            contentDescription = null,
-            modifier = Modifier.size(20.dp),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text("Open in browser")
-    }
-    Spacer(Modifier.height(16.dp))
-    Text(
-        text = "Waiting for you to finish signing in…",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            val cookieManager = CookieManager.getInstance()
+            cookieManager.setAcceptCookie(true)
+
+            WebView(context).apply {
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                // Desktop Chrome UA: Google refuses login to the stock Android WebView UA.
+                settings.userAgentString =
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        super.onPageFinished(view, url)
+                        // Only music.youtube.com carries the SAPISID we need; the login
+                        // hops through accounts.google.com first, so check on every land.
+                        if (url != null && url.contains("music.youtube.com")) {
+                            val cookie = CookieManager.getInstance().getCookie("https://music.youtube.com")
+                            onCookieCaptured(cookie)
+                        }
+                    }
+                }
+                loadUrl("https://accounts.google.com/ServiceLogin?continue=https://music.youtube.com/")
+            }
+        },
     )
 }
 
 @Composable
-private fun SignedInContent(onSignOut: () -> Unit) {
-    Icon(
-        imageVector = Icons.Rounded.CheckCircle,
-        contentDescription = null,
-        tint = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.size(72.dp),
-    )
-    Spacer(Modifier.height(16.dp))
-    Text(
-        text = "You're signed in",
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.Bold,
-    )
-    Spacer(Modifier.height(8.dp))
-    Text(
-        text = "Your library, mixes, and likes come from this account.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(24.dp))
-    FilledTonalButton(onClick = onSignOut) {
+private fun SignedInContent(
+    modifier: Modifier,
+    onSignOut: () -> Unit,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
         Icon(
-            imageVector = Icons.AutoMirrored.Rounded.Logout,
+            imageVector = Icons.Rounded.CheckCircle,
             contentDescription = null,
-            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(72.dp),
         )
-        Spacer(Modifier.width(8.dp))
-        Text("Sign out")
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = "You're signed in",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Your library, mixes, and likes come from this account.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(24.dp))
+        FilledTonalButton(onClick = onSignOut) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.Logout,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text("Sign out")
+        }
     }
 }

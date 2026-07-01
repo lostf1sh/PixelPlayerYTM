@@ -10,12 +10,16 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Persists the signed-in YouTube account's OAuth tokens and exposes a [isSignedIn] flow
- * the UI observes to gate library features.
+ * Persists the signed-in YouTube session as a raw Cookie header for music.youtube.com
+ * and exposes an [isSignedIn] flow the UI observes to gate library features.
  *
- * Tokens are stored in private SharedPreferences. This is personal-use software; for a
- * shipping app these belong in EncryptedSharedPreferences / the Keystore, which is left
- * as a follow-up (see M7).
+ * Cookie auth (SAPISIDHASH) is the only mechanism InnerTube still accepts from third
+ * parties: the TV device-code OAuth issues valid tokens, but every youtubei call made
+ * with one is rejected 400 INVALID_ARGUMENT (verified 2026-07; same reason yt-dlp and
+ * ytmusicapi dropped it).
+ *
+ * Cookies are stored in private SharedPreferences. This is personal-use software; for a
+ * shipping app these belong in EncryptedSharedPreferences / the Keystore.
  */
 @Singleton
 class YtAccountStore @Inject constructor(
@@ -24,54 +28,47 @@ class YtAccountStore @Inject constructor(
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     @Volatile
-    private var accessToken: String? = prefs.getString(KEY_ACCESS, null)
+    private var cookieValue: String? = prefs.getString(KEY_COOKIE, null)
 
-    @Volatile
-    private var refreshTokenValue: String? = prefs.getString(KEY_REFRESH, null)
-
-    /** Absolute epoch-millis at which [accessToken] expires (with a safety margin applied). */
-    @Volatile
-    private var accessExpiryEpochMs: Long = prefs.getLong(KEY_EXPIRY, 0L)
-
-    private val _isSignedIn = MutableStateFlow(refreshTokenValue != null)
+    private val _isSignedIn = MutableStateFlow(extractSapisid(cookieValue) != null)
     val isSignedIn: StateFlow<Boolean> = _isSignedIn.asStateFlow()
 
-    val refreshToken: String? get() = refreshTokenValue
+    /** The full Cookie header to send with InnerTube requests, or null when logged out. */
+    val cookieHeader: String? get() = cookieValue
 
-    fun currentAccessToken(): String? = accessToken
-
-    fun isAccessTokenValid(): Boolean =
-        accessToken != null && System.currentTimeMillis() < accessExpiryEpochMs
+    /** The SAPISID used to compute the SAPISIDHASH Authorization, or null when logged out. */
+    fun sapisid(): String? = extractSapisid(cookieValue)
 
     /**
-     * Store a freshly obtained access token. [refreshToken] may be null on a plain refresh
-     * (Google omits it), in which case the existing refresh token is kept.
+     * Store a captured cookie string. Returns false (and stores nothing) if it doesn't
+     * contain a usable SAPISID — i.e. the WebView login didn't actually complete.
      */
-    fun saveTokens(accessToken: String, refreshToken: String?, expiresInSeconds: Long) {
-        this.accessToken = accessToken
-        if (refreshToken != null) this.refreshTokenValue = refreshToken
-        // Renew a minute early so a request never fires with an about-to-expire token.
-        this.accessExpiryEpochMs = System.currentTimeMillis() + (expiresInSeconds - 60).coerceAtLeast(0) * 1000L
-        prefs.edit {
-            putString(KEY_ACCESS, this@YtAccountStore.accessToken)
-            putString(KEY_REFRESH, this@YtAccountStore.refreshTokenValue)
-            putLong(KEY_EXPIRY, this@YtAccountStore.accessExpiryEpochMs)
-        }
-        _isSignedIn.value = refreshTokenValue != null
+    fun saveCookie(cookie: String): Boolean {
+        if (extractSapisid(cookie) == null) return false
+        cookieValue = cookie
+        prefs.edit { putString(KEY_COOKIE, cookie) }
+        _isSignedIn.value = true
+        return true
     }
 
     fun signOut() {
-        accessToken = null
-        refreshTokenValue = null
-        accessExpiryEpochMs = 0L
+        cookieValue = null
         prefs.edit { clear() }
         _isSignedIn.value = false
     }
 
+    private fun extractSapisid(cookie: String?): String? {
+        if (cookie.isNullOrBlank()) return null
+        // Prefer the third-party variant; SAPISIDHASH accepts either value.
+        for (name in listOf("__Secure-3PAPISID", "SAPISID")) {
+            val match = Regex("""(?:^|;\s*)${Regex.escape(name)}=([^;]+)""").find(cookie)
+            match?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        }
+        return null
+    }
+
     private companion object {
         const val PREFS = "yt_account"
-        const val KEY_ACCESS = "access_token"
-        const val KEY_REFRESH = "refresh_token"
-        const val KEY_EXPIRY = "access_expiry_ms"
+        const val KEY_COOKIE = "cookie"
     }
 }
