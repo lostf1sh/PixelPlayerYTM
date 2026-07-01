@@ -29,7 +29,7 @@ import javax.inject.Inject
 /**
  * Holds the full UI state for ArtistDetailScreen.
  *
- * [effectiveImageUrl] is the resolved image to display (custom takes priority over Deezer).
+ * [effectiveImageUrl] is the resolved image to display (custom takes priority over remote).
  * It is updated after artist data loads and again whenever the user changes the custom image.
  */
 data class ArtistDetailUiState(
@@ -127,7 +127,7 @@ class ArtistDetailViewModel @Inject constructor(
                         val albumSections = buildAlbumSections(songs)
                         val orderedSongs = albumSections.flatMap { it.songs }
 
-                        // 1) Resolve effective image URL (custom > Deezer, may fetch from API)
+                        // 1) Resolve effective image URL (custom > remote, may fetch from API)
                         val effectiveUrl = try {
                             artistImageRepository.getEffectiveArtistImageUrl(
                                 artistId = artist.id,

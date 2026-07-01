@@ -33,7 +33,7 @@ class ArtistImagesModuleHandler @Inject constructor(
                 val customImageBase64 = artist.customImageUri
                     ?.takeIf { it.isNotBlank() }
                     ?.let { readFileAsBase64(it) }
-                // Skip artists with neither a Deezer URL nor a custom image
+                // Skip artists with neither a remote URL nor a custom image
                 if (imageUrl == null && customImageBase64 == null) return@mapNotNull null
                 ArtistImageBackupEntry(
                     artistName = artist.name,
@@ -57,7 +57,7 @@ class ArtistImagesModuleHandler @Inject constructor(
         val entries: List<ArtistImageBackupEntry> = gson.fromJson(payload, type)
         entries.forEach { entry ->
             val artistId = musicDao.getArtistIdByName(entry.artistName) ?: return@forEach
-            // Restore Deezer URL
+            // Restore remote image URL
             if (entry.imageUrl.isNotBlank()) {
                 musicDao.updateArtistImageUrl(artistId, entry.imageUrl)
             }

@@ -67,7 +67,7 @@ enum class BackupSection(
     ARTIST_IMAGES(
         key = "artist_images",
         label = "Artist Images",
-        description = "Cached artist image URLs from Deezer.",
+        description = "Cached artist image URLs.",
         iconRes = R.drawable.rounded_person_24,
         sinceVersion = 3
     ),

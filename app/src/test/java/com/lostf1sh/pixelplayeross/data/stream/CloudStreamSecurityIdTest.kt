@@ -12,23 +12,15 @@ import org.junit.jupiter.api.Test
 class CloudStreamSecurityIdTest {
 
     @Test
-    fun `navidrome song ids allow url-safe characters within length`() {
-        assertTrue(CloudStreamSecurity.validateNavidromeSongId("abc123_-XYZ"))
-        assertTrue(CloudStreamSecurity.validateNavidromeSongId("a"))
-        assertFalse(CloudStreamSecurity.validateNavidromeSongId(""))
-        assertFalse(CloudStreamSecurity.validateNavidromeSongId("a".repeat(101)))
-        assertFalse(CloudStreamSecurity.validateNavidromeSongId("has space"))
-        assertFalse(CloudStreamSecurity.validateNavidromeSongId("path/traversal"))
-        assertFalse(CloudStreamSecurity.validateNavidromeSongId("inject';--"))
-    }
-
-    @Test
-    fun `jellyfin item ids are strictly alphanumeric`() {
-        assertTrue(CloudStreamSecurity.validateJellyfinItemId("a1b2c3d4e5f6A7B8"))
-        assertFalse(CloudStreamSecurity.validateJellyfinItemId(""))
-        assertFalse(CloudStreamSecurity.validateJellyfinItemId("with-hyphen"))
-        assertFalse(CloudStreamSecurity.validateJellyfinItemId("with_underscore"))
-        assertFalse(CloudStreamSecurity.validateJellyfinItemId("a".repeat(101)))
+    fun `youtube video ids are exactly 11 url-safe characters`() {
+        assertTrue(CloudStreamSecurity.validateYouTubeVideoId("dQw4w9WgXcQ"))
+        assertTrue(CloudStreamSecurity.validateYouTubeVideoId("a-b_c-d_e-f"))
+        assertFalse(CloudStreamSecurity.validateYouTubeVideoId(""))
+        assertFalse(CloudStreamSecurity.validateYouTubeVideoId("tooshort"))
+        assertFalse(CloudStreamSecurity.validateYouTubeVideoId("muchtoolong12"))
+        assertFalse(CloudStreamSecurity.validateYouTubeVideoId("has space xx"))
+        assertFalse(CloudStreamSecurity.validateYouTubeVideoId("path/travers"))
+        assertFalse(CloudStreamSecurity.validateYouTubeVideoId("inject';--aa"))
     }
 
     @Test
