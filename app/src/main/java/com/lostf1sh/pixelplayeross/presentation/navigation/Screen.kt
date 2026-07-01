@@ -58,6 +58,9 @@ sealed class Screen(val route: String) {
     /** Google sign-in via the TV device-code flow. */
     object YtLogin : Screen("yt_login")
 
+    /** The synthetic "Local Songs" playlist — all on-device audio as one flat list. */
+    object LocalSongs : Screen("local_songs")
+
     object About : Screen("about")
     object EasterEgg : Screen("easter_egg")
 

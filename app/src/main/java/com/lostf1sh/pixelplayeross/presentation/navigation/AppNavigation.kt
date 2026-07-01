@@ -53,6 +53,7 @@ import com.lostf1sh.pixelplayeross.presentation.screens.AboutScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SearchScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.StatsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SettingsScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.LocalSongsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.YtLoginScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.YtMoodScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.YtPageScreen
@@ -457,6 +458,20 @@ fun AppNavigation(
             ) {
                 ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
                     YtLoginScreen(navController = navController)
+                }
+            }
+            composable(
+                Screen.LocalSongs.route,
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) {
+                ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                    LocalSongsScreen(
+                        navController = navController,
+                        playerViewModel = playerViewModel
+                    )
                 }
             }
             composable(
