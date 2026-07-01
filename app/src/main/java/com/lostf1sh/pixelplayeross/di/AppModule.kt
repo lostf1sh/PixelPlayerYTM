@@ -23,6 +23,7 @@ import com.lostf1sh.pixelplayeross.data.database.FavoritesDao
 import com.lostf1sh.pixelplayeross.data.database.LyricsDao
 import com.lostf1sh.pixelplayeross.data.database.LocalPlaylistDao
 import com.lostf1sh.pixelplayeross.data.database.MIGRATION_1_2
+import com.lostf1sh.pixelplayeross.data.database.MIGRATION_2_3
 import com.lostf1sh.pixelplayeross.data.database.MusicDao
 import com.lostf1sh.pixelplayeross.data.database.PixelPlayerDatabase
 import com.lostf1sh.pixelplayeross.data.database.SearchHistoryDao
@@ -124,7 +125,7 @@ object AppModule {
             "pixelplayer_database"
         )
             .addCallback(PixelPlayerDatabase.createRuntimeArtifactsCallback())
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
 
         // P2-4: Only allow destructive recreation in debug builds.
@@ -184,18 +185,6 @@ object AppModule {
     @Provides
     fun provideLocalPlaylistDao(database: PixelPlayerDatabase): LocalPlaylistDao {
         return database.localPlaylistDao()
-    }
-
-    @Singleton
-    @Provides
-    fun provideNavidromeDao(database: PixelPlayerDatabase): com.lostf1sh.pixelplayeross.data.database.NavidromeDao {
-        return database.navidromeDao()
-    }
-    
-    @Singleton
-    @Provides
-    fun provideJellyfinDao(database: PixelPlayerDatabase): com.lostf1sh.pixelplayeross.data.database.JellyfinDao {
-        return database.jellyfinDao()
     }
 
     @Provides

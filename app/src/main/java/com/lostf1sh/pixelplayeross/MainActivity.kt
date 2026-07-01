@@ -569,7 +569,7 @@ class MainActivity : ComponentActivity() {
         val commonNavItems = remember {
             persistentListOf(
                 BottomNavItem("Home", R.drawable.rounded_home_24, R.drawable.home_24_rounded_filled, Screen.Home),
-                BottomNavItem("Search", R.drawable.rounded_search_24, R.drawable.rounded_search_24, Screen.Search),
+                BottomNavItem("Explore", R.drawable.rounded_explore_24, R.drawable.rounded_explore_24, Screen.Explore),
                 BottomNavItem("Library", R.drawable.rounded_library_music_24, R.drawable.round_library_music_24, Screen.Library)
             )
         }
@@ -587,6 +587,9 @@ class MainActivity : ComponentActivity() {
                 Screen.GenreDetail.route,
                 Screen.AlbumDetail.route,
                 Screen.ArtistDetail.route,
+                Screen.YouTubeBrowse.route,
+                Screen.YouTubeMood.route,
+                Screen.YouTubeLogin.route,
                 Screen.DJSpace.route,
                 Screen.NavBarCrRad.route,
                 Screen.About.route,

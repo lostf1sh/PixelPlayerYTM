@@ -14,6 +14,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -161,6 +162,7 @@ fun SearchScreen(
     }.collectAsStateWithLifecycle(initialValue = SearchUiSlice())
     val currentFilter = searchUiState.selectedSearchFilter
     val genres by playerViewModel.genres.collectAsStateWithLifecycle()
+    val searchSuggestions by playerViewModel.searchSuggestions.collectAsStateWithLifecycle()
     val stablePlayerState by playerViewModel.stablePlayerState.collectAsStateWithLifecycle()
     val favoriteSongIds by playerViewModel.favoriteSongIds.collectAsStateWithLifecycle()
     val selectedSongForInfo by playerViewModel.selectedSongForInfo.collectAsStateWithLifecycle()
@@ -389,6 +391,17 @@ fun SearchScreen(
                             SearchFilterChip(SearchFilterType.ARTISTS, currentFilter, playerViewModel)
                             SearchFilterChip(SearchFilterType.PLAYLISTS, currentFilter, playerViewModel)
                         }
+                        if (searchResults.isEmpty() && searchSuggestions.isNotEmpty()) {
+                            SearchSuggestionsColumn(
+                                suggestions = searchSuggestions,
+                                onSuggestionClick = { suggestion ->
+                                    searchQuery = suggestion
+                                    playerViewModel.updateSearchQuery(suggestion)
+                                    playerViewModel.onSearchQuerySubmitted(suggestion)
+                                    keyboardController?.hide()
+                                },
+                            )
+                        }
                         Crossfade(
                             targetState = searchResults.isEmpty(),
                             animationSpec = tween(durationMillis = 190),
@@ -578,6 +591,37 @@ fun SearchHistoryList(
                     item = item,
                     onHistoryClick = onHistoryClick,
                     onHistoryDelete = onHistoryDelete
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchSuggestionsColumn(
+    suggestions: List<String>,
+    onSuggestionClick: (String) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        suggestions.take(8).forEach { suggestion ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSuggestionClick(suggestion) }
+                    .padding(horizontal = 8.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.size(12.dp))
+                Text(
+                    text = suggestion,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }

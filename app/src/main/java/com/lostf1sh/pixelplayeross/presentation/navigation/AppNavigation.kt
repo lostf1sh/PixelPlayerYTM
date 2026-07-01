@@ -35,6 +35,12 @@ import com.lostf1sh.pixelplayeross.data.preferences.LaunchTab
 import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
 import com.lostf1sh.pixelplayeross.presentation.screens.AlbumDetailScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.AccountsScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.YouTubeHomeScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.ExploreScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.YouTubeBrowseScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.YouTubeMoodScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.YouTubeMusicLibraryScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.YouTubeLoginScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.ArtistDetailScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.ArtistSettingsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.DailyMixScreen
@@ -42,7 +48,6 @@ import com.lostf1sh.pixelplayeross.presentation.screens.EditTransitionScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.EasterEggScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.ExperimentalSettingsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.GenreDetailScreen
-import com.lostf1sh.pixelplayeross.presentation.screens.HomeScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.LibraryScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.MashupScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.NavBarCornerRadiusScreen
@@ -118,11 +123,49 @@ fun AppNavigation(
                 },
             ) {
                 ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
-                    HomeScreen(
-                        navController = navController, 
-                        paddingValuesParent = paddingValues, 
+                    YouTubeHomeScreen(
+                        navController = navController,
+                        paddingValues = paddingValues,
                         playerViewModel = playerViewModel,
-                        onOpenSidebar = onOpenSidebar
+                    )
+                }
+            }
+            composable(
+                Screen.Explore.route,
+                enterTransition = {
+                    mainRootEnterTransition(
+                        fromRoute = initialState.destination.route,
+                        toRoute = targetState.destination.route,
+                        fallback = enterTransition()
+                    )
+                },
+                exitTransition = {
+                    mainRootExitTransition(
+                        fromRoute = initialState.destination.route,
+                        toRoute = targetState.destination.route,
+                        fallback = exitTransition()
+                    )
+                },
+                popEnterTransition = {
+                    mainRootEnterTransition(
+                        fromRoute = initialState.destination.route,
+                        toRoute = targetState.destination.route,
+                        fallback = popEnterTransition()
+                    )
+                },
+                popExitTransition = {
+                    mainRootExitTransition(
+                        fromRoute = initialState.destination.route,
+                        toRoute = targetState.destination.route,
+                        fallback = popExitTransition()
+                    )
+                },
+            ) {
+                ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                    ExploreScreen(
+                        navController = navController,
+                        paddingValues = paddingValues,
+                        playerViewModel = playerViewModel,
                     )
                 }
             }
@@ -198,7 +241,11 @@ fun AppNavigation(
                 },
             ) {
                 ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
-                    LibraryScreen(navController = navController, playerViewModel = playerViewModel)
+                    YouTubeMusicLibraryScreen(
+                        navController = navController,
+                        paddingValues = paddingValues,
+                        playerViewModel = playerViewModel,
+                    )
                 }
             }
             composable(
@@ -227,13 +274,7 @@ fun AppNavigation(
             ) {
                 ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
                     AccountsScreen(
-                        onBackClick = { navController.popBackStack() },
-                        onOpenNavidromeDashboard = {
-                            navController.navigateSafely(Screen.NavidromeDashboard.route)
-                        },
-                        onOpenJellyfinDashboard = {
-                            navController.navigateSafely(Screen.JellyfinDashboard.route)
-                        }
+                        onBackClick = { navController.popBackStack() }
                     )
                 }
             }
@@ -417,6 +458,70 @@ fun AppNavigation(
                 }
             }
             composable(
+                Screen.YouTubeLogin.route,
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) {
+                ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                    YouTubeLoginScreen(
+                        navController = navController,
+                        paddingValues = paddingValues,
+                    )
+                }
+            }
+            composable(
+                route = Screen.YouTubeBrowse.route,
+                arguments = listOf(navArgument("browseId") { type = NavType.StringType }),
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) { backStackEntry ->
+                val browseId = backStackEntry.arguments?.getString("browseId")
+                if (browseId != null) {
+                    ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                        YouTubeBrowseScreen(
+                            navController = navController,
+                            paddingValues = paddingValues,
+                            playerViewModel = playerViewModel,
+                            browseId = browseId,
+                        )
+                    }
+                }
+            }
+            composable(
+                route = Screen.YouTubeMood.route,
+                arguments = listOf(
+                    navArgument("browseId") { type = NavType.StringType },
+                    navArgument("params") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) { backStackEntry ->
+                val browseId = backStackEntry.arguments?.getString("browseId")
+                val params = backStackEntry.arguments?.getString("params")
+                if (browseId != null) {
+                    ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                        YouTubeMoodScreen(
+                            navController = navController,
+                            paddingValues = paddingValues,
+                            playerViewModel = playerViewModel,
+                            browseId = browseId,
+                            params = params,
+                            title = "Explore",
+                        )
+                    }
+                }
+            }
+            composable(
                 route = Screen.ArtistDetail.route,
                 arguments = listOf(navArgument("artistId") { type = NavType.StringType }),
                 enterTransition = { enterTransition() },
@@ -548,32 +653,6 @@ fun AppNavigation(
                     com.lostf1sh.pixelplayeross.presentation.screens.DeviceCapabilitiesScreen(
                         navController = navController,
                         playerViewModel = playerViewModel
-                    )
-                }
-            }
-            composable(
-                Screen.NavidromeDashboard.route,
-                enterTransition = { enterTransition() },
-                exitTransition = { exitTransition() },
-                popEnterTransition = { popEnterTransition() },
-                popExitTransition = { popExitTransition() },
-            ) {
-                ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
-                    com.lostf1sh.pixelplayeross.presentation.navidrome.dashboard.NavidromeDashboardScreen(
-                        onBack = { navController.popBackStack() }
-                    )
-                }
-            }
-            composable(
-                Screen.JellyfinDashboard.route,
-                enterTransition = { enterTransition() },
-                exitTransition = { exitTransition() },
-                popEnterTransition = { popEnterTransition() },
-                popExitTransition = { popExitTransition() },
-            ) {
-                ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
-                    com.lostf1sh.pixelplayeross.presentation.jellyfin.dashboard.JellyfinDashboardScreen(
-                        onBack = { navController.popBackStack() }
                     )
                 }
             }

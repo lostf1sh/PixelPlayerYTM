@@ -66,17 +66,30 @@ fun PixelPlayerStatusBarStyle(
     }
 }
 
+// YouTube Music look: near-black surfaces, red accent. The Material 3 Expressive
+// components (wavy sliders, loading indicators) keep the PixelPlayer identity on top.
 val DarkColorScheme = darkColorScheme(
-    primary = PixelPlayerPurplePrimary,
-    secondary = PixelPlayerPink,
-    tertiary = PixelPlayerOrange,
-    background = PixelPlayerPurpleDark,
-    surface = PixelPlayerSurface,
+    primary = YtmRed,
     onPrimary = PixelPlayerWhite,
-    onSecondary = PixelPlayerWhite,
+    primaryContainer = YtmRedContainer,
+    onPrimaryContainer = YtmOnSurface,
+    secondary = YtmOnSurfaceVariant,
+    onSecondary = PixelPlayerBlack,
+    tertiary = YtmRed,
     onTertiary = PixelPlayerWhite,
-    onBackground = PixelPlayerWhite,
-    onSurface = PixelPlayerLightPurple, // Text on surfaces
+    background = YtmBackground,
+    onBackground = YtmOnSurface,
+    surface = YtmSurface,
+    onSurface = YtmOnSurface,
+    surfaceVariant = YtmSurfaceVariant,
+    onSurfaceVariant = YtmOnSurfaceVariant,
+    surfaceContainerLowest = YtmSurfaceContainerLowest,
+    surfaceContainerLow = YtmSurfaceContainerLow,
+    surfaceContainer = YtmSurfaceContainer,
+    surfaceContainerHigh = YtmSurfaceContainerHigh,
+    surfaceContainerHighest = YtmSurfaceContainerHighest,
+    outline = YtmOutline,
+    outlineVariant = YtmSurfaceVariant,
     error = Color(0xFFFF5252),
     onError = PixelPlayerWhite
 )
@@ -111,22 +124,12 @@ fun PixelPlayerTheme(
     colorSchemePairOverride: ColorSchemePair? = null,
     content: @Composable () -> Unit
 ) {
-    val context = LocalContext.current
     val finalColorScheme = when {
-        colorSchemePairOverride == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            // System dynamic theme as priority if there is no override
-            try {
-                if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-            } catch (e: Exception) {
-                // Fall back to the defaults if dynamic colors fail (rare, but possible on some devices)
-                if (darkTheme) DarkColorScheme else LightColorScheme
-            }
-        }
-        colorSchemePairOverride != null -> {
-            // Use the album scheme if one is provided
+        // The album-art palette (applied inside the player sheet) still wins when present.
+        colorSchemePairOverride != null ->
             if (darkTheme) colorSchemePairOverride.dark else colorSchemePairOverride.light
-        }
-        // Final fallback to the defaults if there is no override or applicable dynamic colors
+        // Default to the YouTube Music near-black + red scheme. Material You dynamic color is
+        // no longer the automatic default (the app now has its own strong brand identity).
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }

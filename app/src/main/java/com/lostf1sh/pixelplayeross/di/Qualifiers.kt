@@ -29,3 +29,11 @@ annotation class BackupGson
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class AppScope
+
+/**
+ * Qualifier for the YouTube-scoped OkHttpClient. Shares the base client's connection pool
+ * but carries its own interceptor stack (per-request InnerTube headers; auth in Phase 3).
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class YouTubeOkHttpClient

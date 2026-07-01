@@ -52,3 +52,18 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_songs_album_artist_id` ON `songs` (`album_artist_id`)")
     }
 }
+
+/**
+ * v2 -> v3: remove the Navidrome/Jellyfin self-hosted provider caches after the pivot to a
+ * YouTube Music client. Drops the cloud provider tables and purges any cached cloud songs
+ * (source_type 5 = Navidrome, 6 = Jellyfin) from the unified library.
+ */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP TABLE IF EXISTS navidrome_songs")
+        db.execSQL("DROP TABLE IF EXISTS navidrome_playlists")
+        db.execSQL("DROP TABLE IF EXISTS jellyfin_songs")
+        db.execSQL("DROP TABLE IF EXISTS jellyfin_playlists")
+        db.execSQL("DELETE FROM songs WHERE source_type IN (5,6)")
+    }
+}

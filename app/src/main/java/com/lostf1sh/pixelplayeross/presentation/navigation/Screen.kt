@@ -8,6 +8,17 @@ sealed class Screen(val route: String) {
     object Home : Screen("home")
     object Search : Screen("search")
     object Library : Screen("library")
+    object Explore : Screen("explore")
+    object YouTubeLogin : Screen("ytm_login")
+    object YouTubeBrowse : Screen("ytm_browse/{browseId}") {
+        fun createRoute(browseId: String) =
+            "ytm_browse/${android.net.Uri.encode(browseId)}"
+    }
+    object YouTubeMood : Screen("ytm_mood/{browseId}?params={params}") {
+        fun createRoute(browseId: String, params: String?) =
+            "ytm_mood/${android.net.Uri.encode(browseId)}" +
+                (params?.let { "?params=${android.net.Uri.encode(it)}" } ?: "")
+    }
     object Settings : Screen("settings")
     object Accounts : Screen("settings_accounts")
     object SettingsCategory : Screen("settings_category/{categoryId}") {
@@ -51,7 +62,5 @@ sealed class Screen(val route: String) {
     object WordDelimiterConfig : Screen("word_delimiter_config")
     object Equalizer : Screen("equalizer")
     object DeviceCapabilities : Screen("device_capabilities")
-    object NavidromeDashboard : Screen("navidrome_dashboard")
-    object JellyfinDashboard : Screen("jellyfin_dashboard")
 
 }

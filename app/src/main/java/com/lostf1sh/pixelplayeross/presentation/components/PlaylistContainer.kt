@@ -442,15 +442,6 @@ fun PlaylistItem(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    if (playlist.source == "NAVIDROME") {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Icon(
-                            painter = painterResource(R.drawable.ic_navidrome),
-                            contentDescription = "Navidrome",
-                            tint = Color.Unspecified,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
                 }
                 Text(
                     text = formatSongCount(playlist.songIds.size),

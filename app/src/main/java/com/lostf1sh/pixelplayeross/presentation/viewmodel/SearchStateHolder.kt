@@ -4,6 +4,7 @@ import com.lostf1sh.pixelplayeross.data.model.SearchFilterType
 import com.lostf1sh.pixelplayeross.data.model.SearchHistoryItem
 import com.lostf1sh.pixelplayeross.data.model.SearchResultItem
 import com.lostf1sh.pixelplayeross.data.repository.MusicRepository
+import com.lostf1sh.pixelplayeross.data.repository.YouTubeMusicRepository
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
@@ -37,10 +38,15 @@ import kotlinx.coroutines.FlowPreview
 @Singleton
 class SearchStateHolder @Inject constructor(
     private val musicRepository: MusicRepository,
+    private val youTubeMusicRepository: YouTubeMusicRepository,
 ) {
     private companion object {
         const val SEARCH_DEBOUNCE_MS = 300L
     }
+
+    /** Continuation token for the last YouTube search, for future paging (Phase 2). */
+    @Volatile
+    private var lastSearchContinuation: String? = null
 
     private data class SearchRequest(
         val query: String,
@@ -56,6 +62,9 @@ class SearchStateHolder @Inject constructor(
 
     private val _searchHistory = MutableStateFlow<ImmutableList<SearchHistoryItem>>(persistentListOf())
     val searchHistory = _searchHistory.asStateFlow()
+
+    private val _searchSuggestions = MutableStateFlow<ImmutableList<String>>(persistentListOf())
+    val searchSuggestions = _searchSuggestions.asStateFlow()
 
     private val searchRequests = MutableSharedFlow<SearchRequest>(
         extraBufferCapacity = 1,
@@ -87,32 +96,36 @@ class SearchStateHolder @Inject constructor(
                         if (_searchResults.value.isNotEmpty()) {
                             _searchResults.value = persistentListOf()
                         }
+                        if (_searchSuggestions.value.isNotEmpty()) {
+                            _searchSuggestions.value = persistentListOf()
+                        }
                         return@collectLatest
                     }
 
+                    // Fetch YTM autocomplete suggestions alongside results.
+                    launch {
+                        val suggestions = youTubeMusicRepository.getSearchSuggestions(normalizedQuery)
+                        if (request.requestId == latestSearchRequestId.get()) {
+                            _searchSuggestions.value = suggestions.toImmutableList()
+                        }
+                    }
+
                     try {
-                        val currentFilter = _selectedSearchFilter.value
-                        musicRepository.searchAll(normalizedQuery, currentFilter).collect { resultsList ->
-                            // Sort: prioritize Song/Album matches over Artist/Playlist matches
-                            val sortedResults = resultsList.sortedWith(
-                                compareBy { result ->
-                                    when (result) {
-                                        is SearchResultItem.SongItem -> 0
-                                        is SearchResultItem.AlbumItem -> 1
-                                        is SearchResultItem.ArtistItem -> 2
-                                        is SearchResultItem.PlaylistItem -> 3
-                                    }
-                                }
-                            )
+                        // YouTube Music is the primary search source. Phase 1 returns playable
+                        // tracks (mapped to SongItem); album/artist/playlist YTM results arrive
+                        // in Phase 2. Local library search moves behind a dedicated surface.
+                        val result = youTubeMusicRepository.search(normalizedQuery)
+                        lastSearchContinuation = result.continuation
 
-                            if (request.requestId != latestSearchRequestId.get()) {
-                                return@collect
-                            }
+                        if (request.requestId != latestSearchRequestId.get()) {
+                            return@collectLatest
+                        }
 
-                            val immutableResults = sortedResults.toImmutableList()
-                            if (_searchResults.value != immutableResults) {
-                                _searchResults.value = immutableResults
-                            }
+                        val immutableResults = result.songs
+                            .map { SearchResultItem.SongItem(it) as SearchResultItem }
+                            .toImmutableList()
+                        if (_searchResults.value != immutableResults) {
+                            _searchResults.value = immutableResults
                         }
                     } catch (_: CancellationException) {
                         // Superseded by a newer query; ignore.

@@ -42,9 +42,6 @@ class PlaylistsModuleHandler @Inject constructor(
         // and would be empty on restore.
         val playlists = allPlaylists.filter { isBackedUpPlaylistSource(it.source) }
 
-        // Build a set of cloud song IDs to exclude from backup
-        val cloudSongIds = buildCloudSongIdSet()
-
         // Get metadata for local songs so we can match them on restore
         val allLocalSummaries = musicDao.getAllLocalSongSummaries()
         val summaryById = allLocalSummaries.associateBy { it.id.toString() }
@@ -52,7 +49,7 @@ class PlaylistsModuleHandler @Inject constructor(
         // Filter cloud songs out of playlists and collect metadata
         val songMetadata = mutableMapOf<String, SongMetadataEntry>()
         val filteredPlaylists = playlists.map { playlist ->
-            val localSongIds = playlist.songIds.filter { id -> id !in cloudSongIds }
+            val localSongIds = playlist.songIds
             // Collect metadata for matched local songs
             localSongIds.forEach { id ->
                 if (id !in songMetadata) {
@@ -304,13 +301,6 @@ class PlaylistsModuleHandler @Inject constructor(
 
     private fun normalizeText(text: String): String {
         return text.trim().lowercase()
-    }
-
-    private suspend fun buildCloudSongIdSet(): Set<String> {
-        val cloudIds = mutableSetOf<String>()
-        musicDao.getAllNavidromeSongIds().mapTo(cloudIds) { it.toString() }
-        musicDao.getAllJellyfinSongIds().mapTo(cloudIds) { it.toString() }
-        return cloudIds
     }
 
     // ---- Legacy format ----

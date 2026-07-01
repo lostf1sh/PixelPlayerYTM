@@ -273,7 +273,9 @@ class PlayerViewModel @Inject constructor(
     val multiSelectionStateHolder: MultiSelectionStateHolder,
     val playlistSelectionStateHolder: PlaylistSelectionStateHolder,
     private val sessionToken: SessionToken,
-    private val mediaControllerFactory: com.lostf1sh.pixelplayeross.data.media.MediaControllerFactory
+    private val mediaControllerFactory: com.lostf1sh.pixelplayeross.data.media.MediaControllerFactory,
+    private val youTubeMusicRepository: com.lostf1sh.pixelplayeross.data.repository.YouTubeMusicRepository,
+    private val youTubeAccountManager: com.lostf1sh.pixelplayeross.data.youtube.auth.YouTubeAccountManager
 ) : ViewModel() {
 
     private val _playerUiState = MutableStateFlow(PlayerUiState())
@@ -537,6 +539,10 @@ class PlayerViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = true
         )
+
+    /** YouTube Music search autocomplete suggestions for the current query. */
+    val searchSuggestions: StateFlow<kotlinx.collections.immutable.ImmutableList<String>> =
+        searchStateHolder.searchSuggestions
 
 
 
@@ -1134,6 +1140,9 @@ class PlayerViewModel @Inject constructor(
         .getFavoriteSongIdsFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
+    /** Video ids the user has liked on YouTube Music this session (optimistic, for the like button). */
+    private val youTubeLikedIds = MutableStateFlow<Set<String>>(emptySet())
+
     val isCurrentSongFavorite: StateFlow<Boolean> = combine(
         stablePlayerState
             .map { it.currentSong }
@@ -1144,12 +1153,16 @@ class PlayerViewModel @Inject constructor(
             }
             .flatMapLatest { song ->
                 kotlinx.coroutines.flow.flow {
-                    emit(resolveFavoriteSongId(song))
+                    emit(song to resolveFavoriteSongId(song))
                 }
             },
-        favoriteSongIds
-    ) { favoriteSongId, ids ->
-        favoriteSongId?.let { ids.contains(it) } ?: false
+        favoriteSongIds,
+        youTubeLikedIds
+    ) { (song, favoriteSongId), ids, likedYt ->
+        when {
+            song != null && song.contentUriString.startsWith("ytm://") -> likedYt.contains(song.id)
+            else -> favoriteSongId?.let { ids.contains(it) } ?: false
+        }
     }.distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
@@ -1740,6 +1753,7 @@ class PlayerViewModel @Inject constructor(
 
         // Initialize SearchStateHolder
         searchStateHolder.initialize(viewModelScope)
+        // (searchSuggestions is exposed directly below for the search bar.)
 
         // Collect SearchStateHolder flows
         viewModelScope.launch {
@@ -2669,6 +2683,7 @@ class PlayerViewModel @Inject constructor(
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 playbackStateHolder.onPlaybackOccurrenceTransition(mediaItem?.mediaId)
                 preparePlaybackAudioMetadataForMedia(mediaItem?.mediaId)
+                maybeExtendYouTubeQueue()
                 transitionSchedulerJob?.cancel()
                 lyricsStateHolder.cancelLoading()
                 transitionSchedulerJob = viewModelScope.launch {
@@ -3162,22 +3177,9 @@ class PlayerViewModel @Inject constructor(
     }
 
     private suspend fun buildResolvedPlaybackMediaItem(song: Song): MediaItem {
-        val mediaItem = MediaItemBuilder.build(song)
-        val originalUri = mediaItem.localConfiguration?.uri ?: return mediaItem
-        val scheme = originalUri.scheme
-        if (
-            scheme != "navidrome" &&
-            scheme != "jellyfin"
-        ) {
-            return mediaItem
-        }
-
-        val resolvedUri = dualPlayerEngine.resolveCloudUri(originalUri)
-        return if (resolvedUri == originalUri) {
-            mediaItem
-        } else {
-            mediaItem.buildUpon().setUri(resolvedUri).build()
-        }
+        // ytm:// and http(s) URIs are resolved lazily inside DualPlayerEngine at playback time,
+        // so no pre-resolution is needed here.
+        return MediaItemBuilder.build(song)
     }
 
 
@@ -3254,6 +3256,15 @@ class PlayerViewModel @Inject constructor(
 
     fun toggleFavorite() {
         val currentSong = playbackStateHolder.stablePlayerState.value.currentSong ?: return
+        // YouTube Music tracks: like/unlike on the account instead of the local favorites DB.
+        if (currentSong.contentUriString.startsWith("ytm://")) {
+            val liked = !youTubeLikedIds.value.contains(currentSong.id)
+            youTubeLikedIds.value = youTubeLikedIds.value.toMutableSet().apply {
+                if (liked) add(currentSong.id) else remove(currentSong.id)
+            }
+            viewModelScope.launch { youTubeMusicRepository.setLike(currentSong.id, liked) }
+            return
+        }
         viewModelScope.launch {
             val favoriteSongId = resolveFavoriteSongId(currentSong) ?: return@launch
             val currentlyFavorite = favoriteSongIds.value.contains(favoriteSongId)
@@ -3341,6 +3352,50 @@ class PlayerViewModel @Inject constructor(
 
             controller.addMediaItem(insertionIndex, mediaItem)
             // Queue UI is synced via onTimelineChanged listener
+        }
+    }
+
+    // ── YouTube Music radio / endless autoplay ─────────────────────────
+    @Volatile
+    private var isFetchingRadio = false
+    private val autoplaySeededFor = java.util.Collections.newSetFromMap(
+        java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    )
+
+    /** Start a YouTube Music radio seeded by [song] and play it as a fresh queue. */
+    fun startYouTubeRadio(song: Song) {
+        viewModelScope.launch {
+            val page = youTubeMusicRepository.getWatchQueue(song.id)
+            val queue = listOf(song) + page.songs.filter { it.id != song.id }
+            if (queue.isNotEmpty()) {
+                showAndPlaySong(queue.first(), queue, "Radio")
+            }
+        }
+    }
+
+    /**
+     * Endless autoplay: when a YouTube-sourced queue nears its end, fetch the track's watch
+     * queue and append the fresh tracks so playback continues radio-style. No-op for local queues.
+     */
+    private fun maybeExtendYouTubeQueue() {
+        val controller = mediaController ?: return
+        val queue = _playerUiState.value.currentPlaybackQueue
+        if (queue.isEmpty() || isFetchingRadio) return
+        val currentIndex = controller.currentMediaItemIndex.takeIf { it != C.INDEX_UNSET } ?: return
+        if (queue.size - 1 - currentIndex > 2) return
+        val current = queue.getOrNull(currentIndex) ?: return
+        if (!current.contentUriString.startsWith("ytm://")) return
+        if (!autoplaySeededFor.add(current.id)) return
+
+        isFetchingRadio = true
+        viewModelScope.launch {
+            try {
+                val page = youTubeMusicRepository.getWatchQueue(current.id)
+                val existingIds = _playerUiState.value.currentPlaybackQueue.mapTo(HashSet()) { it.id }
+                page.songs.filter { it.id !in existingIds }.forEach { addSongToQueue(it) }
+            } finally {
+                isFetchingRadio = false
+            }
         }
     }
 
