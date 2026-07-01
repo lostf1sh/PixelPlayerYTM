@@ -167,7 +167,8 @@ internal fun shouldDisableAudioOffloadOnEarlyBuffering(
 @OptIn(UnstableApi::class)
 @Singleton
 class DualPlayerEngine @Inject constructor(
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    private val youTubeStreamProxy: com.lostf1sh.pixelplayeross.data.stream.youtube.YouTubeStreamProxy
 ) {
     private companion object {
         private const val AUDIO_OFFLOAD_STALL_FALLBACK_MS = 4_000L
@@ -945,8 +946,13 @@ class DualPlayerEngine @Inject constructor(
     }
 
     private fun resolveReadyCloudProxyUri(uri: Uri): Uri? {
-        // NOTE(ytm-pivot M1): YouTubeStreamProxy dispatch lands in M3.
-        return null
+        val proxyUrl = when (uri.scheme) {
+            "ytm" -> youTubeStreamProxy
+                .takeIf { it.isReady() }
+                ?.resolveYouTubeUri(uri.toString())
+            else -> null
+        }
+        return proxyUrl?.let(Uri::parse)
     }
 
     private fun getOrCreateAuxiliaryPlayer(): ExoPlayer {
@@ -997,14 +1003,24 @@ class DualPlayerEngine @Inject constructor(
         val uriString = uri.toString()
         resolvedUriCache.get(uriString)?.let { return@withContext it }
 
-        // NOTE(ytm-pivot M1): YouTubeStreamProxy async resolution lands in M3.
-        val resolved: Uri? = null
+        val resolved: Uri? = when (uri.scheme) {
+            "ytm" -> resolveYouTubeUriAsync(uriString)
+            else -> null
+        }
 
         if (resolved != null) {
             resolvedUriCache.put(uriString, resolved)
             return@withContext resolved
         }
         uri
+    }
+
+    private suspend fun resolveYouTubeUriAsync(uriString: String): Uri? = withContext(Dispatchers.IO) {
+        // A cold player call (base.js fetch + cipher execution) is slower than the self-hosted
+        // proxies were, so allow a more generous readiness/warm-up window.
+        if (!youTubeStreamProxy.ensureReady(10_000L)) return@withContext null
+        youTubeStreamProxy.warmUpStreamUrl(uriString)
+        youTubeStreamProxy.resolveYouTubeUri(uriString)?.let { Uri.parse(it) }
     }
 
     suspend fun resolveMediaItem(mediaItem: MediaItem): MediaItem {
