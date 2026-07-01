@@ -223,7 +223,7 @@ fun FileExplorerContent(
     }
     val loadingHint = remember(isPriming, isReady) {
         if (isPriming || !isReady) {
-            "This can take a moment while PixelPlayerOSS scans the available subfolders."
+            "This can take a moment while PixelPlayerYTM scans the available subfolders."
         } else {
             null
         }

@@ -71,7 +71,9 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.lostf1sh.pixelplayeross"
+        // Install identity is YTM; source namespace stays pixelplayeross to avoid a
+        // whole-tree package rename.
+        applicationId = "com.lostf1sh.pixelplayerytm"
         minSdk = 30
         targetSdk = 37
         versionCode = (project.findProperty("APP_VERSION_CODE") as? String)?.toInt() ?: 1

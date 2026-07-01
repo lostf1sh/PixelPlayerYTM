@@ -636,7 +636,7 @@ class MusicService : MediaLibraryService() {
                     .setMediaId(LOCAL_LIBRARY_ROOT_ID)
                     .setMediaMetadata(
                         androidx.media3.common.MediaMetadata.Builder()
-                            .setTitle("PixelPlayerOSS")
+                            .setTitle("PixelPlayerYTM")
                             .setIsBrowsable(true)
                             .setIsPlayable(false)
                             .setMediaType(androidx.media3.common.MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)

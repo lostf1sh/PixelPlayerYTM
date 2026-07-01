@@ -85,7 +85,7 @@ class PixelPlayerApplication : Application(), ImageLoaderFactory, Configuration.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
-                "PixelPlayerOSS Music Playback",
+                "PixelPlayerYTM Music Playback",
                 NotificationManager.IMPORTANCE_LOW
             )
             val notificationManager = getSystemService(NotificationManager::class.java)

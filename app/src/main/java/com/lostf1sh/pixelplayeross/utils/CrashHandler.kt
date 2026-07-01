@@ -22,7 +22,7 @@ data class CrashLogData(
      */
     fun getFullLog(): String {
         return buildString {
-            appendLine("=== PixelPlayerOSS Crash Report ===")
+            appendLine("=== PixelPlayerYTM Crash Report ===")
             appendLine("Date: $formattedDate")
             appendLine("Exception: $exceptionMessage")
             appendLine()

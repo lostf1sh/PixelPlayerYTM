@@ -124,7 +124,7 @@ private val CoreMaintainer = Contributor(
     id = "lostf1sh",
     displayName = "@lostf1sh",
     role = "FOSS Maintainer",
-    detail = "Maintains PixelPlayerOSS. GitHub and Telegram: @lostf1sh.",
+    detail = "Maintains PixelPlayerYTM. GitHub and Telegram: @lostf1sh.",
     avatarUrl = "https://github.com/lostf1sh.png",
     iconRes = R.drawable.round_developer_board_24,
     githubUrl = "https://github.com/lostf1sh",
@@ -147,7 +147,7 @@ private val AboutMaintainers = listOf(
     NonFossMaintainer,
 )
 
-private const val SourceRepoUrl = "https://github.com/lostf1sh/PixelPlayerOSS"
+private const val SourceRepoUrl = "https://github.com/lostf1sh/PixelPlayerYTM"
 private const val FDroidUrl = "https://f-droid.org/packages/com.lostf1sh.pixelplayeross/"
 private const val SponsorUrl = "https://github.com/sponsors/lostf1sh"
 
