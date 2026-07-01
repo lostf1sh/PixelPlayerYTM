@@ -19,15 +19,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://jitpack.io") {
-            content {
-                includeGroup("com.github.philburk")
-                includeGroup("com.github.racra")
-            }
-        }
     }
 }
 
-rootProject.name = "PixelPlayerOSS"
+rootProject.name = "PixelPlayerYTM"
 include(":app")
-include(":baselineprofile")
