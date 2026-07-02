@@ -25,15 +25,15 @@ class StreamResolutionException(message: String) : Exception(message)
 /**
  * Resolves a videoId to a single, progressive, directly-streamable audio URL.
  *
- * Clients are tried in reliability order: ANDROID_MUSIC first (its formats carry plain
- * URLs, so no base.js work), then WEB_REMIX and TVHTML5 (which need signature/n-param
- * descrambling via [PlayerCipher]). A short-lived cache avoids re-hitting `player` for
- * tracks played back-to-back (URLs are ~6h-lived; we expire a minute early).
+ * The signed-in WEB_REMIX client returns music streams as signatureCipher formats, which
+ * [NewPipeStreamHelper] descrambles (signature + `n` param) against the live base.js. A
+ * short-lived cache avoids re-hitting `player` for tracks played back-to-back (URLs are
+ * ~6h-lived; we expire a minute early).
  */
 @Singleton
 class YouTubeStreamResolver @Inject constructor(
     private val innerTube: InnerTubeService,
-    private val cipher: PlayerCipher,
+    private val newPipe: NewPipeStreamHelper,
     private val accountStore: YtAccountStore,
     private val json: Json,
 ) {
@@ -66,11 +66,16 @@ class YouTubeStreamResolver @Inject constructor(
     }
 
     private suspend fun resolveWith(videoId: String, client: InnerTubeClientId): ResolvedStream? {
-        val needsCipher = client != InnerTubeClientId.ANDROID_MUSIC
-        val signatureTimestamp = if (needsCipher) cipher.prepare() else null
+        // WEB_REMIX (the signed-in path that actually returns music streams) hands back
+        // signatureCipher formats keyed to base.js; echo its signatureTimestamp so the
+        // formats match the descrambler NewPipe will run.
+        val signatureTimestamp =
+            if (client.useSignatureTimestamp) newPipe.signatureTimestamp(videoId) else null
 
         val root = innerTube.call("player", client) {
             put("videoId", videoId)
+            put("contentCheckOk", true)
+            put("racyCheckOk", true)
             if (signatureTimestamp != null) {
                 putJsonObject("playbackContext") {
                     putJsonObject("contentPlaybackContext") {
@@ -85,8 +90,8 @@ class YouTubeStreamResolver @Inject constructor(
         }
 
         val format = bestAudioFormat(response) ?: return null
-        val playerUrl = if (needsCipher) cipher.playerUrlOrThrow() else null
-        val url = playableUrl(format, playerUrl)
+        val url = newPipe.resolveStreamUrl(videoId, format)
+            ?: throw StreamResolutionException("could not descramble stream url")
 
         val expiresInSeconds = response.streamingData?.expiresInSeconds?.toLongOrNull() ?: 21_600L
         return ResolvedStream(
@@ -95,24 +100,6 @@ class YouTubeStreamResolver @Inject constructor(
             mimeType = format.mimeType ?: "audio/mp4",
             expiresAtEpochMs = now() + expiresInSeconds * 1000L,
         )
-    }
-
-    private suspend fun playableUrl(
-        format: PlayerResponse.StreamingData.Format,
-        playerUrl: String?,
-    ): String {
-        format.url?.let { plain ->
-            // Even plain (web-client) URLs can carry an un-transformed n param.
-            return if (playerUrl != null && Regex("""[?&]n=""").containsMatchIn(plain)) {
-                cipher.resolveNParam(plain, playerUrl)
-            } else {
-                plain
-            }
-        }
-        val signatureCipher = format.signatureCipher ?: format.cipher
-            ?: throw StreamResolutionException("format has neither url nor signatureCipher")
-        val url = playerUrl ?: run { cipher.prepare(); cipher.playerUrlOrThrow() }
-        return cipher.resolveSignatureCipher(signatureCipher, url)
     }
 
     private fun bestAudioFormat(response: PlayerResponse): PlayerResponse.StreamingData.Format? {
@@ -133,10 +120,9 @@ class YouTubeStreamResolver @Inject constructor(
     private companion object {
         const val TAG = "YtStreamResolver"
         const val CACHE_LIMIT = 60
-        val CLIENT_ORDER = listOf(
-            InnerTubeClientId.ANDROID_MUSIC,
-            InnerTubeClientId.WEB_REMIX,
-            InnerTubeClientId.TVHTML5,
-        )
+        // WEB_REMIX is the only client that returns music streams for a signed-in user
+        // (the app/TV clients now demand attestation/PoToken and answer LOGIN_REQUIRED).
+        // Its formats are ciphered, which NewPipe descrambles.
+        val CLIENT_ORDER = listOf(InnerTubeClientId.WEB_REMIX)
     }
 }

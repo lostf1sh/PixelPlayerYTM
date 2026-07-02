@@ -201,6 +201,7 @@ dependencies {
     // AndroidX & Compose
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.webkit)
+    implementation(libs.newpipe.extractor)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.lifecycleprocess)
@@ -262,7 +263,6 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.kotlinx.serialization.json)
     // Executes the signature/n-param descrambling functions extracted from YouTube base.js.
-    implementation(libs.duktape.android)
     implementation(libs.kotlinx.collections.immutable)
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.cio)

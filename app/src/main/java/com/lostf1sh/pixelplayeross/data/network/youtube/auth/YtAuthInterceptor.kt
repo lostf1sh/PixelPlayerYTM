@@ -24,12 +24,14 @@ class YtAuthInterceptor @Inject constructor(
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
 
-        // Never authenticate `player`: stream resolution uses the ANDROID_MUSIC / TVHTML5
-        // clients, which reject web cookies (400) or bounce authenticated requests through
-        // an endless consent redirect. Anonymous playback is the only path that works, and
-        // the redirect storm from getting this wrong also starves browse/search on the
-        // shared client. Cookie auth is for browse/search/library only.
-        if (request.url.encodedPath.endsWith("/player")) return chain.proceed(request)
+        // Only authenticate the web client (WEB_REMIX, X-YouTube-Client-Name: 67). It is
+        // what browse/search/library and — crucially — the `player` stream resolution use,
+        // and the one whose cookie session Google accepts. App/TV player clients reject web
+        // cookies (400) or bounce through an endless consent redirect, so they stay
+        // anonymous; getting that wrong also starves browse/search on the shared client.
+        if (request.header("X-YouTube-Client-Name") != WEB_REMIX_CLIENT_ID) {
+            return chain.proceed(request)
+        }
 
         val cookie = accountStore.cookieHeader
         val sapisid = accountStore.sapisid()
@@ -58,5 +60,6 @@ class YtAuthInterceptor @Inject constructor(
 
     private companion object {
         const val ORIGIN = "https://music.youtube.com"
+        const val WEB_REMIX_CLIENT_ID = "67"
     }
 }

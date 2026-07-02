@@ -20,16 +20,19 @@ enum class InnerTubeClientId(
     val userAgent: String,
     val referer: String?,
     val androidSdkVersion: Int?,
+    /** Whether `player` requests must echo the base.js signatureTimestamp (web clients do). */
+    val useSignatureTimestamp: Boolean = false,
 ) {
     WEB_REMIX(
         clientName = "WEB_REMIX",
-        version = "1.20241023.01.00",
+        version = "1.20260630.02.00",
         apiKey = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30",
         headerId = "67",
         userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         referer = "https://music.youtube.com/",
         androidSdkVersion = null,
+        useSignatureTimestamp = true,
     ),
     ANDROID_MUSIC(
         clientName = "ANDROID_MUSIC",
