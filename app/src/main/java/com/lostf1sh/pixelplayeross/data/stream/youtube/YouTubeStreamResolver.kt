@@ -45,6 +45,11 @@ class YouTubeStreamResolver @Inject constructor(
     private val cache = LinkedHashMap<String, ResolvedStream>()
     private val cacheMutex = Mutex()
 
+    /** Drop a cached stream whose URL the origin has rejected, forcing a fresh `player` call. */
+    suspend fun invalidate(videoId: String) {
+        cacheMutex.withLock { cache.remove(videoId) }
+    }
+
     suspend fun resolve(videoId: String): ResolvedStream {
         cacheMutex.withLock {
             cache[videoId]?.let { cached ->

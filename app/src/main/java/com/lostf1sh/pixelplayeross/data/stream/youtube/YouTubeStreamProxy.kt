@@ -102,6 +102,10 @@ class YouTubeStreamProxy @Inject constructor(
 
     override fun formatIdForUrl(id: String): String = id
 
+    override suspend fun onStreamUrlRejected(id: String) {
+        resolver.invalidate(id)
+    }
+
     override suspend fun resolveStreamUrl(id: String): String? = try {
         resolver.resolve(id).url
     } catch (e: Exception) {

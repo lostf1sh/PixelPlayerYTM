@@ -210,6 +210,13 @@ abstract class CloudStreamProxy<K : Any>(
     protected open fun proxyUrlExtraParams(id: K): String? = null
 
     /**
+     * Called when the origin rejected a cached stream URL (403/410) and the proxy is about
+     * to re-resolve. Subclasses drop any upstream-layer caches of their own (the base class
+     * already dropped its [urlCache] entry) so [resolveStreamUrl] returns a truly fresh URL.
+     */
+    protected open suspend fun onStreamUrlRejected(id: K) {}
+
+    /**
      * The `Range` header to send upstream, given the (validated) client range — null means
      * "send none". Default is passthrough. Subclasses override when the origin demands a
      * specific range shape (YouTube's googlevideo 403s an open-ended `bytes=N-` or a range
@@ -247,6 +254,15 @@ abstract class CloudStreamProxy<K : Any>(
         }
         return resolveStreamUrl(id)?.also { url ->
             urlCache[id] = CachedUrl(url, System.currentTimeMillis(), cacheExpirationMs)
+        }
+    }
+
+    private suspend fun fetchUpstream(streamUrl: String, clientRange: String?): okhttp3.Response {
+        val requestBuilder = Request.Builder().url(streamUrl)
+        resolveUpstreamRange(streamUrl, clientRange)?.let { requestBuilder.header("Range", it) }
+        upstreamHeaders(streamUrl).forEach { (name, value) -> requestBuilder.header(name, value) }
+        return withContext(Dispatchers.IO) {
+            streamingClient.newCall(requestBuilder.build()).execute()
         }
     }
 
@@ -292,16 +308,27 @@ abstract class CloudStreamProxy<K : Any>(
                             return@get
                         }
 
-                        val requestBuilder = Request.Builder().url(streamUrl)
-                        resolveUpstreamRange(streamUrl, rangeValidation.normalizedHeader)?.let {
-                            requestBuilder.header("Range", it)
-                        }
-                        upstreamHeaders(streamUrl).forEach { (name, value) ->
-                            requestBuilder.header(name, value)
-                        }
+                        var response = fetchUpstream(streamUrl, rangeValidation.normalizedHeader)
 
-                        val response = withContext(Dispatchers.IO) {
-                            streamingClient.newCall(requestBuilder.build()).execute()
+                        // Stream URLs die before our cache TTL says so (googlevideo's ~6 h
+                        // `expire`, or earlier when the device's IP changes): the origin
+                        // answers 403/410. Re-resolve once and retry transparently — passing
+                        // the error through would make ExoPlayer skip the track.
+                        if (response.code == 403 || response.code == 410) {
+                            Timber.w("$proxyTag upstream rejected cached URL (${response.code}); re-resolving")
+                            response.close()
+                            urlCache.remove(id)
+                            onStreamUrlRejected(id)
+                            val freshUrl = getOrFetchStreamUrl(id)
+                            if (!freshUrl.isNullOrBlank() &&
+                                CloudStreamSecurity.isSafeRemoteStreamUrl(
+                                    url = freshUrl,
+                                    allowedHostSuffixes = allowedHostSuffixes,
+                                    allowHttpForAllowedHosts = true
+                                )
+                            ) {
+                                response = fetchUpstream(freshUrl, rangeValidation.normalizedHeader)
+                            }
                         }
 
                         response.use { upstream ->
