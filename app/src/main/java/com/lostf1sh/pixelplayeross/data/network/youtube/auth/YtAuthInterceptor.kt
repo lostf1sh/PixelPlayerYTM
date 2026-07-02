@@ -23,6 +23,14 @@ class YtAuthInterceptor @Inject constructor(
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
+
+        // Never authenticate `player`: stream resolution uses the ANDROID_MUSIC / TVHTML5
+        // clients, which reject web cookies (400) or bounce authenticated requests through
+        // an endless consent redirect. Anonymous playback is the only path that works, and
+        // the redirect storm from getting this wrong also starves browse/search on the
+        // shared client. Cookie auth is for browse/search/library only.
+        if (request.url.encodedPath.endsWith("/player")) return chain.proceed(request)
+
         val cookie = accountStore.cookieHeader
         val sapisid = accountStore.sapisid()
         if (cookie.isNullOrBlank() || sapisid == null) return chain.proceed(request)
