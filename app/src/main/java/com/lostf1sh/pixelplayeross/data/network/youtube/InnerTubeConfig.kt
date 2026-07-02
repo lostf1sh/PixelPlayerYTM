@@ -24,6 +24,11 @@ enum class InnerTubeClientId(
     val useSignatureTimestamp: Boolean = false,
     /** Whether this client takes a BotGuard PoToken (web clients: sent in body + on stream URL). */
     val useWebPoTokens: Boolean = false,
+    // Extra `context.client` device fields some clients (ANDROID_VR) require to be trusted.
+    val osName: String? = null,
+    val osVersion: String? = null,
+    val deviceMake: String? = null,
+    val deviceModel: String? = null,
 ) {
     WEB_REMIX(
         clientName = "WEB_REMIX",
@@ -70,6 +75,38 @@ enum class InnerTubeClientId(
             "(KHTML, like Gecko) Version/16.0 Safari/605.1.15",
         referer = "https://www.youtube.com/",
         androidSdkVersion = null,
+    ),
+    /** Web Creator Studio — another PoToken web client; useful for age-restricted tracks. */
+    WEB_CREATOR(
+        clientName = "WEB_CREATOR",
+        version = "1.20260101.00.00",
+        apiKey = "AIzaSyBUPetSUmoZL-OhlxA7wSac5XinrygCqMo",
+        headerId = "62",
+        userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        referer = "https://music.youtube.com/",
+        androidSdkVersion = null,
+        useSignatureTimestamp = true,
+        useWebPoTokens = true,
+    ),
+    /**
+     * The Quest VR app client. Returns plain (non-ciphered, non-`svpuc`) audio URLs with no
+     * PoToken — the anonymous last resort when the WebView pot path is unavailable. Requires
+     * the full device context below or YouTube answers "sign in to confirm you're not a bot".
+     */
+    ANDROID_VR(
+        clientName = "ANDROID_VR",
+        version = "1.37",
+        apiKey = "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w",
+        headerId = "28",
+        userAgent = "com.google.android.apps.youtube.vr.oculus/1.37 " +
+            "(Linux; U; Android 12; en_US; Quest 3; Build/SQ3A.220605.009.A1; Cronet/107.0.5284.2)",
+        referer = null,
+        androidSdkVersion = 32,
+        osName = "Android",
+        osVersion = "12",
+        deviceMake = "Oculus",
+        deviceModel = "Quest 3",
     ),
 }
 

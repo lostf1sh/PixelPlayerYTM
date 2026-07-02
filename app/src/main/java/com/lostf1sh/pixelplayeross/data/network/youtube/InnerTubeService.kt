@@ -66,6 +66,10 @@ class InnerTubeService @Inject constructor(
                     put("hl", "en")
                     put("gl", "US")
                     client.androidSdkVersion?.let { put("androidSdkVersion", it) }
+                    client.osName?.let { put("osName", it) }
+                    client.osVersion?.let { put("osVersion", it) }
+                    client.deviceMake?.let { put("deviceMake", it) }
+                    client.deviceModel?.let { put("deviceModel", it) }
                     visitorId?.let { put("visitorData", it) }
                 }
                 putJsonObject("user") { put("lockedSafetyMode", false) }
