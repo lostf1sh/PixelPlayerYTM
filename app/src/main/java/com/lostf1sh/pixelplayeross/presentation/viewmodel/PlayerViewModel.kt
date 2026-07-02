@@ -47,6 +47,7 @@ import com.lostf1sh.pixelplayeross.data.model.Lyrics
 import com.lostf1sh.pixelplayeross.data.model.LyricsSourcePreference
 import com.lostf1sh.pixelplayeross.data.model.SearchFilterType
 import com.lostf1sh.pixelplayeross.data.model.Song
+import com.lostf1sh.pixelplayeross.data.model.toSong
 import com.lostf1sh.pixelplayeross.data.model.SortOption
 import com.lostf1sh.pixelplayeross.data.model.toLibraryTabIdOrNull
 import com.lostf1sh.pixelplayeross.data.provider.SharedArtworkContentProvider
@@ -273,7 +274,8 @@ class PlayerViewModel @Inject constructor(
     val multiSelectionStateHolder: MultiSelectionStateHolder,
     val playlistSelectionStateHolder: PlaylistSelectionStateHolder,
     private val sessionToken: SessionToken,
-    private val mediaControllerFactory: com.lostf1sh.pixelplayeross.data.media.MediaControllerFactory
+    private val mediaControllerFactory: com.lostf1sh.pixelplayeross.data.media.MediaControllerFactory,
+    private val ytRadioSession: com.lostf1sh.pixelplayeross.data.youtube.YtRadioSession
 ) : ViewModel() {
 
     private val _playerUiState = MutableStateFlow(PlayerUiState())
@@ -2669,6 +2671,7 @@ class PlayerViewModel @Inject constructor(
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 playbackStateHolder.onPlaybackOccurrenceTransition(mediaItem?.mediaId)
                 preparePlaybackAudioMetadataForMedia(mediaItem?.mediaId)
+                maybeExtendRadioQueue()
                 transitionSchedulerJob?.cancel()
                 lyricsStateHolder.cancelLoading()
                 transitionSchedulerJob = viewModelScope.launch {
@@ -3316,6 +3319,39 @@ class PlayerViewModel @Inject constructor(
     private fun parseFileUriPath(uriString: String): String? {
         val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return null
         return uri.takeIf { it.scheme == "file" }?.path?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * Endless radio: when the playing queue is the radio that [ytRadioSession] is armed
+     * for and the listener is within a few tracks of its end, fetch the next radio page
+     * and append it. Duplicates already in the timeline are dropped, so a page that
+     * echoes earlier picks can't shrink the runway forever — the session just advances
+     * to the following page on the next transition.
+     */
+    private var radioExtendJob: Job? = null
+
+    private fun maybeExtendRadioQueue() {
+        val controller = mediaController ?: return
+        val queueSourceName = _playerUiState.value.currentQueueSourceName
+        val remaining = controller.mediaItemCount - controller.currentMediaItemIndex - 1
+        if (!ytRadioSession.isActiveFor(queueSourceName)) return
+        Timber.tag("YtRadio").d("radio queue %s: %d tracks remaining", queueSourceName, remaining)
+        // Extend once the listener is within 5 tracks of the queue's end.
+        if (remaining > 5) return
+        if (radioExtendJob?.isActive == true) return
+
+        val queueName = _playerUiState.value.currentQueueSourceName
+        radioExtendJob = viewModelScope.launch {
+            val existingIds = buildSet {
+                for (i in 0 until controller.mediaItemCount) add(controller.getMediaItemAt(i).mediaId)
+            }
+            val fresh = ytRadioSession.nextTracks(queueName)
+                .map { it.toSong() }
+                .filter { it.id !in existingIds }
+            if (fresh.isEmpty()) return@launch
+            controller.addMediaItems(fresh.map { buildPlaybackMediaItem(it) })
+            Timber.tag("YtRadio").d("extended radio queue with %d tracks", fresh.size)
+        }
     }
 
     fun addSongToQueue(song: Song) {
