@@ -35,10 +35,25 @@ import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import android.widget.Toast
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lostf1sh.pixelplayeross.presentation.viewmodel.YtPlaylistActionsViewModel
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
@@ -479,7 +494,12 @@ fun YtTrackOptionsSheetContent(
     onStartRadio: () -> Unit,
     onGoToAlbum: (() -> Unit)?,
     onGoToArtist: (() -> Unit)?,
+    onDismiss: () -> Unit = {},
 ) {
+    val playlistActions: YtPlaylistActionsViewModel = hiltViewModel()
+    val isSignedIn by playlistActions.isSignedIn.collectAsStateWithLifecycle()
+    var pickingPlaylist by rememberSaveable { mutableStateOf(false) }
+
     Column(modifier = Modifier.padding(bottom = 24.dp)) {
         Row(
             modifier = Modifier
@@ -511,11 +531,111 @@ fun YtTrackOptionsSheetContent(
                 )
             }
         }
-        YtSheetAction("Play next", onPlayNext)
-        YtSheetAction("Add to queue", onAddToQueue)
-        YtSheetAction("Start radio", onStartRadio)
-        onGoToAlbum?.let { YtSheetAction("Go to album", it) }
-        onGoToArtist?.let { YtSheetAction("Go to artist", it) }
+        if (pickingPlaylist) {
+            YtPlaylistPickerPane(
+                track = track,
+                viewModel = playlistActions,
+                onDone = onDismiss,
+            )
+        } else {
+            YtSheetAction("Play next", onPlayNext)
+            YtSheetAction("Add to queue", onAddToQueue)
+            YtSheetAction("Start radio", onStartRadio)
+            if (isSignedIn) {
+                YtSheetAction("Add to playlist") { pickingPlaylist = true }
+            }
+            onGoToAlbum?.let { YtSheetAction("Go to album", it) }
+            onGoToArtist?.let { YtSheetAction("Go to artist", it) }
+        }
+    }
+}
+
+/**
+ * Second pane of the options sheet: pick one of the account's playlists (or create a
+ * new one) to add [track] to. Writes go through [YtPlaylistActionsViewModel]; the result
+ * lands as a toast after [onDone] has closed the sheet.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun YtPlaylistPickerPane(
+    track: YtTrack,
+    viewModel: YtPlaylistActionsViewModel,
+    onDone: () -> Unit,
+) {
+    val context = LocalContext.current.applicationContext
+    val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    var showCreateDialog by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) { viewModel.loadPlaylists() }
+
+    fun toastResult(ok: Boolean) {
+        Toast.makeText(
+            context,
+            if (ok) "Added to playlist" else "Couldn't add to playlist",
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+
+    Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+    ) {
+        Text(
+            text = "Add to playlist",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+        )
+        YtSheetAction("New playlist…") { showCreateDialog = true }
+        when {
+            playlists == null -> Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 24.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) { LoadingIndicator() }
+
+            playlists.orEmpty().isEmpty() -> Text(
+                text = "No playlists in your library yet.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+            )
+
+            else -> playlists.orEmpty().forEach { playlist ->
+                YtSheetAction(playlist.title) {
+                    viewModel.addToPlaylist(playlist.browseId, track.videoId, ::toastResult)
+                    onDone()
+                }
+            }
+        }
+    }
+
+    if (showCreateDialog) {
+        var title by rememberSaveable { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showCreateDialog = false },
+            title = { Text("New playlist") },
+            text = {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    singleLine = true,
+                    label = { Text("Playlist name") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = title.isNotBlank(),
+                    onClick = {
+                        viewModel.createPlaylistWith(title.trim(), track.videoId, ::toastResult)
+                        showCreateDialog = false
+                        onDone()
+                    },
+                ) { Text("Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateDialog = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 

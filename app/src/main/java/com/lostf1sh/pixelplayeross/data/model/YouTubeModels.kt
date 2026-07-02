@@ -155,4 +155,8 @@ data class YtBrowsePage(
     val tracks: List<YtTrack> = emptyList(),
     /** Secondary sections (an artist's albums, related artists, …). */
     val shelves: List<YtShelf> = emptyList(),
+    /** Artist pages only: the `UC…` id the subscribe action targets. */
+    val channelId: String? = null,
+    /** Artist pages only: whether the signed-in account subscribes to this artist. */
+    val subscribed: Boolean = false,
 )

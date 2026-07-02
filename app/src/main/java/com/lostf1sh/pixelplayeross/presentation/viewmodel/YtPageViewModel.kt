@@ -42,6 +42,9 @@ class YtPageViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
+    /** Gates the subscribe button — anonymous sessions can't subscribe. */
+    val isSignedIn: kotlinx.coroutines.flow.StateFlow<Boolean> get() = repository.isSignedIn
+
     init {
         load()
     }
@@ -64,6 +67,21 @@ class YtPageViewModel @Inject constructor(
                     it.copy(isLoading = false, error = e.message ?: "Couldn't load this page")
                 }
             }
+        }
+    }
+
+    /** Optimistic subscribe/unsubscribe for artist pages; reverts if the call fails. */
+    fun toggleSubscription() {
+        val page = _uiState.value.page ?: return
+        val channelId = page.channelId ?: return
+        val target = !page.subscribed
+        _uiState.update { it.copy(page = page.copy(subscribed = target)) }
+        viewModelScope.launch {
+            runCatching { repository.setArtistSubscribed(channelId, target) }
+                .onFailure { e ->
+                    Timber.tag(TAG).w(e, "subscribe toggle failed for %s", channelId)
+                    _uiState.update { s -> s.copy(page = s.page?.copy(subscribed = !target)) }
+                }
         }
     }
 

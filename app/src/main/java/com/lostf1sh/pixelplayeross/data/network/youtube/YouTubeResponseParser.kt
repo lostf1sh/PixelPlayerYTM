@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 
 /**
@@ -182,12 +183,18 @@ internal object YouTubeResponseParser {
             )
         }
 
+        // Artist (immersive) headers carry a subscribe button with the channel id and the
+        // signed-in account's current subscription state.
+        val subscribeButton = header.obj("subscriptionButton").obj("subscribeButtonRenderer")
+
         return YtBrowsePage(
             title = title,
             subtitle = header?.obj("subtitle")?.runsText()?.ifBlank { null },
             heroImageUrl = heroImageUrl,
             tracks = hydratedTracks,
             shelves = shelves,
+            channelId = subscribeButton.str("channelId"),
+            subscribed = subscribeButton.bool("subscribed") == true,
         )
     }
 
@@ -640,6 +647,9 @@ internal object YouTubeResponseParser {
 
     private fun JsonObject?.str(key: String): String? =
         (this?.get(key) as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+
+    private fun JsonObject?.bool(key: String): Boolean? =
+        (this?.get(key) as? JsonPrimitive)?.booleanOrNull
 
     private fun JsonArray?.objAt(index: Int): JsonObject? =
         this?.getOrNull(index) as? JsonObject

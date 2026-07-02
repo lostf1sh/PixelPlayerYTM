@@ -375,6 +375,7 @@ fun LibraryScreen(
         ModalBottomSheet(onDismissRequest = { trackForOptions = null }) {
             YtTrackOptionsSheetContent(
                 track = track,
+                onDismiss = { trackForOptions = null },
                 onPlayNext = {
                     playerViewModel.addSongNextToQueue(track.toSong())
                     trackForOptions = null

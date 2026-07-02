@@ -17,7 +17,12 @@ import com.lostf1sh.pixelplayeross.data.network.youtube.YtBrowseIds
 import com.lostf1sh.pixelplayeross.data.network.youtube.YtSearchFilter
 import com.lostf1sh.pixelplayeross.data.network.youtube.auth.YtAccountStore
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -191,6 +196,37 @@ class YouTubeRepository @Inject constructor(
     suspend fun setLiked(videoId: String, liked: Boolean) {
         innerTube.call(if (liked) "like/like" else "like/removelike") {
             putJsonObject("target") { put("videoId", videoId) }
+        }
+    }
+
+    /** Create a private playlist (optionally seeded with tracks); returns its playlistId. */
+    suspend fun createPlaylist(title: String, videoIds: List<String> = emptyList()): String? =
+        innerTube.call("playlist/create") {
+            put("title", title)
+            put("privacyStatus", "PRIVATE")
+            if (videoIds.isNotEmpty()) {
+                putJsonArray("videoIds") { videoIds.forEach(::add) }
+            }
+        }["playlistId"]?.jsonPrimitive?.contentOrNull
+
+    /** Append a track to one of the user's playlists. True when YT confirms the edit. */
+    suspend fun addToPlaylist(playlistId: String, videoId: String): Boolean {
+        val root = innerTube.call("browse/edit_playlist") {
+            // Library rows carry the browse form (`VL<id>`); edits want the bare id.
+            put("playlistId", playlistId.removePrefix("VL"))
+            putJsonArray("actions") {
+                addJsonObject {
+                    put("action", "ACTION_ADD_VIDEO")
+                    put("addedVideoId", videoId)
+                }
+            }
+        }
+        return root["status"]?.jsonPrimitive?.contentOrNull == "STATUS_SUCCEEDED"
+    }
+
+    suspend fun setArtistSubscribed(channelId: String, subscribed: Boolean) {
+        innerTube.call(if (subscribed) "subscription/subscribe" else "subscription/unsubscribe") {
+            putJsonArray("channelIds") { add(channelId) }
         }
     }
 

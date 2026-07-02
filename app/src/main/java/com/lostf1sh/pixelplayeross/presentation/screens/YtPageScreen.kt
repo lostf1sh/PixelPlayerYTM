@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -136,12 +137,19 @@ fun YtPageScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 item(key = "hero", contentType = "hero") {
+                    val isSignedIn by viewModel.isSignedIn.collectAsStateWithLifecycle()
                     PageHero(
                         title = page.title,
                         subtitle = page.subtitle,
                         heroImageUrl = page.heroImageUrl,
                         isArtist = viewModel.kind == YtPageKind.ARTIST,
                         hasTracks = pageSongs.isNotEmpty(),
+                        subscribed = page.subscribed,
+                        onToggleSubscribe = if (isSignedIn && page.channelId != null) {
+                            viewModel::toggleSubscription
+                        } else {
+                            null
+                        },
                         onPlay = {
                             pageSongs.firstOrNull()?.let { first ->
                                 playerViewModel.playSongs(pageSongs, first, queueName)
@@ -212,6 +220,7 @@ fun YtPageScreen(
         ModalBottomSheet(onDismissRequest = { trackForOptions = null }) {
             YtTrackOptionsSheetContent(
                 track = track,
+                onDismiss = { trackForOptions = null },
                 onPlayNext = {
                     playerViewModel.addSongNextToQueue(track.toSong())
                     trackForOptions = null
@@ -257,6 +266,8 @@ private fun PageHero(
     hasTracks: Boolean,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
+    subscribed: Boolean = false,
+    onToggleSubscribe: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier
@@ -311,6 +322,14 @@ private fun PageHero(
                     Spacer(Modifier.width(8.dp))
                     Text("Shuffle")
                 }
+            }
+        }
+        onToggleSubscribe?.let { toggle ->
+            Spacer(Modifier.height(12.dp))
+            if (subscribed) {
+                FilledTonalButton(onClick = toggle) { Text("Subscribed") }
+            } else {
+                OutlinedButton(onClick = toggle) { Text("Subscribe") }
             }
         }
     }
