@@ -348,6 +348,7 @@ fun LibraryScreen(
                                         song = likedSongs[index],
                                         isPlaying = stablePlayerState.isPlaying,
                                         isCurrentSong = stablePlayerState.currentSong?.id == track.videoId,
+                                        onLongPress = { trackForOptions = track },
                                         onMoreOptionsClick = { trackForOptions = track },
                                         onClick = {
                                             playerViewModel.playSongs(likedSongs, likedSongs[index], "Liked Songs")

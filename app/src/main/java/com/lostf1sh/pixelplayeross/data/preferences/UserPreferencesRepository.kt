@@ -209,6 +209,7 @@ constructor(
         // YouTube Music
         val YTM_NORMALIZATION_ENABLED = booleanPreferencesKey("ytm_normalization_enabled")
         val YTM_AUDIO_QUALITY = stringPreferencesKey("ytm_audio_quality")
+        val YTM_AUTOPLAY_ENABLED = booleanPreferencesKey("ytm_autoplay_enabled")
 
         // Developer Options
         val ALBUM_ART_QUALITY = stringPreferencesKey("album_art_quality")
@@ -640,6 +641,18 @@ constructor(
     suspend fun setYtmAudioQuality(quality: com.lostf1sh.pixelplayeross.data.model.YtAudioQuality) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.YTM_AUDIO_QUALITY] = quality.name
+        }
+    }
+
+    /** Keep the music going with a radio seeded from the queue's last track. Default on. */
+    val ytmAutoplayEnabledFlow: Flow<Boolean> =
+            dataStore.data.map { preferences ->
+                preferences[PreferencesKeys.YTM_AUTOPLAY_ENABLED] ?: true
+            }.distinctUntilChanged()
+
+    suspend fun setYtmAutoplayEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.YTM_AUTOPLAY_ENABLED] = enabled
         }
     }
 

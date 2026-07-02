@@ -386,6 +386,7 @@ fun SettingsCategoryScreen(
                             val ytSignedIn by ytSettingsViewModel.isSignedIn.collectAsStateWithLifecycle()
                             val ytAccount by ytSettingsViewModel.accountInfo.collectAsStateWithLifecycle()
                             val ytNormalization by ytSettingsViewModel.normalizationEnabled.collectAsStateWithLifecycle()
+                            val ytAutoplay by ytSettingsViewModel.autoplayEnabled.collectAsStateWithLifecycle()
                             val ytQuality by ytSettingsViewModel.audioQuality.collectAsStateWithLifecycle()
                             val ytCacheBytes by ytSettingsViewModel.cacheBytes.collectAsStateWithLifecycle()
 
@@ -458,6 +459,13 @@ fun SettingsCategoryScreen(
                                     checked = ytNormalization,
                                     onCheckedChange = { ytSettingsViewModel.setNormalizationEnabled(it) },
                                     leadingIcon = { Icon(painterResource(R.drawable.rounded_music_note_24), null, tint = MaterialTheme.colorScheme.secondary) }
+                                )
+                                SwitchSettingItem(
+                                    title = stringResource(R.string.setcat_ytm_autoplay_title),
+                                    subtitle = stringResource(R.string.setcat_ytm_autoplay_subtitle),
+                                    checked = ytAutoplay,
+                                    onCheckedChange = { ytSettingsViewModel.setAutoplayEnabled(it) },
+                                    leadingIcon = { Icon(Icons.Outlined.PlayCircle, null, tint = MaterialTheme.colorScheme.secondary) }
                                 )
                             }
 

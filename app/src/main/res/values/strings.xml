@@ -217,6 +217,7 @@
     <!-- Error visibility -->
     <string name="player_error_skipping">Couldn\'t play this track — skipping</string>
     <string name="yt_like_failed">Couldn\'t update the like on YouTube Music</string>
+    <string name="queue_playback_speed">Playback speed</string>
     <string name="sync_failed_toast">Library sync failed. Pull down to refresh and try again.</string>
 
     <!-- Accessibility -->

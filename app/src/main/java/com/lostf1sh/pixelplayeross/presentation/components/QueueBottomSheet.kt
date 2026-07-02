@@ -18,6 +18,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -54,6 +56,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
@@ -73,7 +76,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -253,12 +259,14 @@ fun QueueBottomSheet(
     val colors = MaterialTheme.colorScheme
     val context = LocalContext.current
     var showTimerOptions by rememberSaveable { mutableStateOf(false) }
+    var showSpeedOptions by rememberSaveable { mutableStateOf(false) }
     var showClearQueueDialog by remember { mutableStateOf(false) }
     var isFabExpanded by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(isVisible) {
         if (!isVisible) {
             showTimerOptions = false
+            showSpeedOptions = false
             showClearQueueDialog = false
             isFabExpanded = false
         }
@@ -925,13 +933,16 @@ fun QueueBottomSheet(
                     val isTimerActiveDerived = remember {
                         derivedStateOf { activeTimerValueDisplay.value != null }
                     }
+                    val playbackSpeed by viewModel.playbackSpeed.collectAsStateWithLifecycle()
                     QueueControlsToolbar(
                         isShuffleOn = isShuffleOn,
                         repeatMode = repeatMode,
                         isTimerActive = isTimerActiveDerived,
+                        isSpeedActive = playbackSpeed != 1f,
                         onToggleShuffle = onToggleShuffle,
                         onToggleRepeat = onToggleRepeat,
-                        onTimerClick = { showTimerOptions = true }
+                        onTimerClick = { showTimerOptions = true },
+                        onSpeedClick = { showSpeedOptions = true }
                     )
 
                     Spacer(modifier = Modifier.width(4.dp))
@@ -1129,6 +1140,15 @@ fun QueueBottomSheet(
                     }
                 }
             }
+        }
+
+        if (showSpeedOptions) {
+            val playbackSpeed by viewModel.playbackSpeed.collectAsStateWithLifecycle()
+            PlaybackSpeedBottomSheet(
+                currentSpeed = playbackSpeed,
+                onSpeedSelected = { viewModel.setPlaybackSpeed(it) },
+                onDismiss = { showSpeedOptions = false },
+            )
         }
 
         if (showTimerOptions) {
@@ -1367,9 +1387,11 @@ private fun QueueControlsToolbar(
     isShuffleOn: Boolean,
     repeatMode: Int,
     isTimerActive: androidx.compose.runtime.State<Boolean>,
+    isSpeedActive: Boolean,
     onToggleShuffle: () -> Unit,
     onToggleRepeat: () -> Unit,
     onTimerClick: () -> Unit,
+    onSpeedClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val activeColors = IconButtonDefaults.filledIconButtonColors(
@@ -1437,9 +1459,86 @@ private fun QueueControlsToolbar(
                     contentDescription = stringResource(R.string.presentation_batch_e_cd_sleep_timer),
                 )
             }
+            Spacer(modifier = Modifier.width(12.dp))
+            FilledTonalIconButton(
+                onClick = onSpeedClick,
+                colors = if (isSpeedActive) activeColors else inactiveColors,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Speed,
+                    contentDescription = stringResource(R.string.queue_playback_speed),
+                )
+            }
         }
     }
 }
+
+/** YTM-style playback speed picker: preset chips plus a fine-grained slider. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlaybackSpeedBottomSheet(
+    currentSpeed: Float,
+    onSpeedSelected: (Float) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.Speed,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = stringResource(R.string.queue_playback_speed),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = formatPlaybackSpeed(currentSpeed),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                PLAYBACK_SPEED_PRESETS.forEach { preset ->
+                    FilterChip(
+                        selected = currentSpeed == preset,
+                        onClick = { onSpeedSelected(preset) },
+                        label = { Text(formatPlaybackSpeed(preset)) },
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Slider(
+                value = currentSpeed,
+                onValueChange = onSpeedSelected,
+                valueRange = 0.5f..2f,
+                steps = 29,
+            )
+        }
+    }
+}
+
+private val PLAYBACK_SPEED_PRESETS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+
+private fun formatPlaybackSpeed(speed: Float): String =
+    if (speed == speed.toInt().toFloat()) "${speed.toInt()}x" else "${speed}x"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

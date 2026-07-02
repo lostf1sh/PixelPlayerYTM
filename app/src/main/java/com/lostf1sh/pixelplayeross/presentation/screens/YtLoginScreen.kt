@@ -4,9 +4,6 @@ import android.annotation.SuppressLint
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.webkit.WebSettingsCompat
-import androidx.webkit.WebViewFeature
-import timber.log.Timber
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,10 +45,10 @@ import com.lostf1sh.pixelplayeross.data.model.YtAccountInfo
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.YtLoginViewModel
 
 /**
- * Google sign-in via an in-app WebView. Google blocks account login inside default
- * WebViews ("this browser may not be secure"), so we spoof a desktop Chrome UA. Once
- * the user lands on music.youtube.com signed in, the cookie jar carries a SAPISID
- * session; we capture it and persist. If already signed in, offers sign-out instead.
+ * Google sign-in via an in-app WebView, on the music-templated ServiceLogin flow that
+ * surfaces the device's already-signed-in Google accounts for one-tap sign-in. Once the
+ * user lands on music.youtube.com signed in, the cookie jar carries a SAPISID session;
+ * we capture it and persist. If already signed in, offers sign-out instead.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -138,36 +135,31 @@ private fun LoginWebView(
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                // Turn the WebView's UA into a genuine mobile-Chrome one consistent with the
-                // device: strip the three embedded-browser tells Google keys on — "; wv",
-                // the "Version/4.0" token (real Chrome has no Version/), and the "Build/…"
-                // fragment. A desktop UA would be worse (Windows string on an Android device).
-                settings.userAgentString = settings.userAgentString
-                    .replace("; wv", "")
-                    .replace(Regex("""Version/[0-9.]+ """), "")
-                    .replace(Regex(""" Build/[^)]+"""), "")
-                // Android auto-injects `X-Requested-With: <package>` on every request, which
-                // is Google's primary "embedded WebView" tell behind the "browser may not be
-                // secure" block. An empty allow-list sends it to no origin, suppressing it.
-                val canSuppress = WebViewFeature.isFeatureSupported(
-                    WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST
-                )
-                Timber.tag("YtLogin").d(
-                    "requested-with suppression supported=%s; ua=%s",
-                    canSuppress, settings.userAgentString,
-                )
-                if (canSuppress) {
-                    WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
-                }
-
-                // Keep navigation in-view (the default handler punts to the browser);
-                // cookie capture happens in the polling loop above, not on page events.
+                // Deliberately keep the STOCK WebView UA (with "; wv" and Build/…) and the
+                // X-Requested-With header: on this music ServiceLogin flow Google treats a
+                // recognized Android WebView as a device sign-in and offers the phone's
+                // already-signed-in Google accounts as one-tap choices — no password, no
+                // 2FA re-entry. Spoofing a browser UA here (the old approach) suppressed
+                // that account picker and forced a full manual login.
                 webViewClient = WebViewClient()
-                loadUrl("https://accounts.google.com/ServiceLogin?continue=https://music.youtube.com/")
+                loadUrl(LOGIN_URL)
             }
+        },
+        onRelease = { view ->
+            view.stopLoading()
+            view.destroy()
         },
     )
 }
+
+/**
+ * The music-templated Google sign-in used by every working third-party YTM client
+ * (InnerTune, Metrolist, PixelMusic): unlike the generic ServiceLogin, this flow is not
+ * hit by Google's "this browser may not be secure" WebView block and surfaces the
+ * device-account chooser.
+ */
+private const val LOGIN_URL =
+    "https://accounts.google.com/ServiceLogin?ltmpl=music&service=youtube&uilel=3&passive=true&continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26hl%3Den%26next%3Dhttps%253A%252F%252Fmusic.youtube.com%252F&hl=en"
 
 @Composable
 private fun SignedInContent(

@@ -41,6 +41,10 @@ class YtSettingsViewModel @Inject constructor(
         userPreferencesRepository.ytmNormalizationEnabledFlow
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
+    val autoplayEnabled: StateFlow<Boolean> =
+        userPreferencesRepository.ytmAutoplayEnabledFlow
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
     val audioQuality: StateFlow<YtAudioQuality> =
         userPreferencesRepository.ytmAudioQualityFlow
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), YtAudioQuality.AUTO)
@@ -61,6 +65,10 @@ class YtSettingsViewModel @Inject constructor(
 
     fun setNormalizationEnabled(enabled: Boolean) {
         viewModelScope.launch { userPreferencesRepository.setYtmNormalizationEnabled(enabled) }
+    }
+
+    fun setAutoplayEnabled(enabled: Boolean) {
+        viewModelScope.launch { userPreferencesRepository.setYtmAutoplayEnabled(enabled) }
     }
 
     fun setAudioQuality(quality: YtAudioQuality) {

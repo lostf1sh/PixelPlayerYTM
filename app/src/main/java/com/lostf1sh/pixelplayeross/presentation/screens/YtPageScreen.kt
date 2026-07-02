@@ -160,6 +160,7 @@ fun YtPageScreen(
                             song = pageSongs[index],
                             isPlaying = stablePlayerState.isPlaying,
                             isCurrentSong = stablePlayerState.currentSong?.id == track.videoId,
+                            onLongPress = { trackForOptions = track },
                             onMoreOptionsClick = { trackForOptions = track },
                             onClick = {
                                 playerViewModel.playSongs(pageSongs, pageSongs[index], queueName)
@@ -199,6 +200,7 @@ fun YtPageScreen(
                             },
                             currentSongId = stablePlayerState.currentSong?.id,
                             isPlaying = stablePlayerState.isPlaying,
+                            onTrackLongPress = { trackForOptions = it },
                         )
                     }
                 }

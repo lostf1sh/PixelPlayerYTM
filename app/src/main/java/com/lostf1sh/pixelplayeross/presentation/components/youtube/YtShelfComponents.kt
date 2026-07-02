@@ -1,7 +1,9 @@
 package com.lostf1sh.pixelplayeross.presentation.components.youtube
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +18,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -35,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -72,6 +77,7 @@ fun YtShelfSection(
     currentSongId: String?,
     isPlaying: Boolean,
     modifier: Modifier = Modifier,
+    onTrackLongPress: (YtTrack) -> Unit = {},
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         shelf.subtitle?.let { strapline ->
@@ -97,8 +103,11 @@ fun YtShelfSection(
         val categories = remember(shelf) {
             shelf.entries.filterIsInstance<YtShelfEntry.Category>()
         }
-        if (categories.size == shelf.entries.size && categories.isNotEmpty()) {
-            FlowRow(
+        val tracks = remember(shelf) {
+            shelf.entries.filterIsInstance<YtShelfEntry.Track>().map { it.track }
+        }
+        when {
+            categories.size == shelf.entries.size && categories.isNotEmpty() -> FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp),
@@ -109,8 +118,18 @@ fun YtShelfSection(
                     YtCategoryChip(category = category, onClick = { onCategoryClick(category) })
                 }
             }
-        } else {
-            LazyRow(
+
+            // All-track shelves (Quick picks & friends) read best as the og-YTM layout:
+            // a horizontal pager of 4-row columns — denser, and each row is one tap away.
+            tracks.size == shelf.entries.size && tracks.size >= TRACK_GRID_ROWS -> YtTrackPagedGrid(
+                tracks = tracks,
+                currentSongId = currentSongId,
+                isPlaying = isPlaying,
+                onTrackClick = { onTrackClick(it, shelf) },
+                onTrackLongPress = onTrackLongPress,
+            )
+
+            else -> LazyRow(
                 contentPadding = PaddingValues(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
@@ -121,6 +140,7 @@ fun YtShelfSection(
                             isCurrentSong = entry.track.videoId == currentSongId,
                             isPlaying = isPlaying,
                             onClick = { onTrackClick(entry.track, shelf) },
+                            onLongClick = { onTrackLongPress(entry.track) },
                         )
                         is YtShelfEntry.Page -> YtPageCard(
                             page = entry,
@@ -137,6 +157,97 @@ fun YtShelfSection(
     }
 }
 
+private const val TRACK_GRID_ROWS = 4
+
+/** og-YTM "Quick picks" layout: pages of [TRACK_GRID_ROWS] compact rows with a peek of the next page. */
+@Composable
+private fun YtTrackPagedGrid(
+    tracks: List<YtTrack>,
+    currentSongId: String?,
+    isPlaying: Boolean,
+    onTrackClick: (YtTrack) -> Unit,
+    onTrackLongPress: (YtTrack) -> Unit,
+) {
+    val pages = remember(tracks) { tracks.chunked(TRACK_GRID_ROWS) }
+    val pagerState = rememberPagerState(pageCount = { pages.size })
+    HorizontalPager(
+        state = pagerState,
+        contentPadding = PaddingValues(start = 20.dp, end = 48.dp),
+        pageSpacing = 12.dp,
+        verticalAlignment = Alignment.Top,
+    ) { pageIndex ->
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            pages[pageIndex].forEach { track ->
+                YtTrackGridRow(
+                    track = track,
+                    isCurrentSong = track.videoId == currentSongId,
+                    isPlaying = isPlaying,
+                    onClick = { onTrackClick(track) },
+                    onLongClick = { onTrackLongPress(track) },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun YtTrackGridRow(
+    track: YtTrack,
+    isCurrentSong: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val shape = remember { ytSmoothShape(12.dp) }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(remember { ytSmoothShape(16.dp) })
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+    ) {
+        SmartImage(
+            model = track.thumbnailUrl,
+            contentDescription = track.title,
+            shape = shape,
+            modifier = Modifier.size(52.dp),
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = track.title,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (isCurrentSong) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val byline = remember(track) {
+                track.artists.joinToString(", ") { it.name }.ifBlank { track.album.orEmpty() }
+            }
+            if (byline.isNotBlank()) {
+                Text(
+                    text = byline,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (isCurrentSong) {
+            Spacer(Modifier.width(8.dp))
+            PlayingEqIcon(
+                modifier = Modifier.size(width = 18.dp, height = 16.dp),
+                color = MaterialTheme.colorScheme.primary,
+                isPlaying = isPlaying,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun YtTrackCard(
     track: YtTrack,
@@ -144,12 +255,13 @@ fun YtTrackCard(
     isPlaying: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: () -> Unit = {},
 ) {
     val shape = remember { ytSmoothShape(20.dp) }
     Column(
         modifier = modifier
             .width(CardWidth)
-            .clickable(onClick = onClick),
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Box {
             SmartImage(

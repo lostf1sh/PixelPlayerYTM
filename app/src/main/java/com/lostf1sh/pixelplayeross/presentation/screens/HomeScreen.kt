@@ -51,7 +51,9 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
+import com.lostf1sh.pixelplayeross.data.model.YtPageKind
 import com.lostf1sh.pixelplayeross.data.model.YtShelfEntry
+import com.lostf1sh.pixelplayeross.data.model.YtTrack
 import com.lostf1sh.pixelplayeross.data.model.toSong
 import com.lostf1sh.pixelplayeross.presentation.components.BetaInfoBottomSheet
 import com.lostf1sh.pixelplayeross.presentation.components.ChangelogBottomSheet
@@ -60,6 +62,7 @@ import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
 import com.lostf1sh.pixelplayeross.presentation.components.resolveMainScreenBottomGradientHeight
 import com.lostf1sh.pixelplayeross.presentation.components.youtube.YtErrorBox
 import com.lostf1sh.pixelplayeross.presentation.components.youtube.YtShelfSection
+import com.lostf1sh.pixelplayeross.presentation.components.youtube.YtTrackOptionsSheetContent
 import com.lostf1sh.pixelplayeross.presentation.components.youtube.ytSmoothShape
 import com.lostf1sh.pixelplayeross.presentation.navigation.Screen
 import com.lostf1sh.pixelplayeross.presentation.navigation.navigateSafely
@@ -102,6 +105,7 @@ fun HomeScreen(
 
     var showChangelogBottomSheet by remember { mutableStateOf(false) }
     var showBetaInfoBottomSheet by remember { mutableStateOf(false) }
+    var trackForOptions by remember { mutableStateOf<YtTrack?>(null) }
     val sheetState = rememberModalBottomSheetState()
     val betaSheetState = rememberModalBottomSheetState()
 
@@ -220,6 +224,7 @@ fun HomeScreen(
                                 },
                                 currentSongId = currentSong?.id,
                                 isPlaying = isPlaying,
+                                onTrackLongPress = { trackForOptions = it },
                             )
                         }
 
@@ -263,6 +268,44 @@ fun HomeScreen(
             sheetState = betaSheetState,
         ) {
             BetaInfoBottomSheet()
+        }
+    }
+    trackForOptions?.let { track ->
+        ModalBottomSheet(onDismissRequest = { trackForOptions = null }) {
+            YtTrackOptionsSheetContent(
+                track = track,
+                onPlayNext = {
+                    playerViewModel.addSongNextToQueue(track.toSong())
+                    trackForOptions = null
+                },
+                onAddToQueue = {
+                    playerViewModel.addSongToQueue(track.toSong())
+                    trackForOptions = null
+                },
+                onStartRadio = {
+                    trackForOptions = null
+                    scope.launch {
+                        val radio = radioViewModel.radioSongsFor(track)
+                        playerViewModel.playSongs(radio, radio.first(), "${track.title} Radio")
+                    }
+                },
+                onGoToAlbum = track.albumBrowseId?.let { albumId ->
+                    {
+                        trackForOptions = null
+                        navController.navigateSafely(
+                            Screen.YtPage.createRoute(YtPageKind.ALBUM, albumId)
+                        )
+                    }
+                },
+                onGoToArtist = track.artists.firstOrNull { it.channelId != null }?.channelId?.let { channelId ->
+                    {
+                        trackForOptions = null
+                        navController.navigateSafely(
+                            Screen.YtPage.createRoute(YtPageKind.ARTIST, channelId)
+                        )
+                    }
+                },
+            )
         }
     }
 }

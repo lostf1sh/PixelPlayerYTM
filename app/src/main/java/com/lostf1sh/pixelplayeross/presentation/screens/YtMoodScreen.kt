@@ -15,10 +15,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextOverflow
@@ -27,12 +31,15 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavHostController
+import com.lostf1sh.pixelplayeross.data.model.YtPageKind
 import com.lostf1sh.pixelplayeross.data.model.YtShelfEntry
+import com.lostf1sh.pixelplayeross.data.model.YtTrack
 import com.lostf1sh.pixelplayeross.data.model.toSong
 import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
 import com.lostf1sh.pixelplayeross.presentation.components.youtube.YtErrorBox
 import com.lostf1sh.pixelplayeross.presentation.components.youtube.YtLoadingBox
 import com.lostf1sh.pixelplayeross.presentation.components.youtube.YtShelfSection
+import com.lostf1sh.pixelplayeross.presentation.components.youtube.YtTrackOptionsSheetContent
 import com.lostf1sh.pixelplayeross.presentation.navigation.Screen
 import com.lostf1sh.pixelplayeross.presentation.navigation.navigateSafely
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerViewModel
@@ -53,6 +60,7 @@ fun YtMoodScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val stablePlayerState by playerViewModel.stablePlayerState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    var trackForOptions by remember { mutableStateOf<YtTrack?>(null) }
 
     val bottomPadding = if (stablePlayerState.currentSong != null) MiniPlayerHeight else 0.dp
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -128,9 +136,49 @@ fun YtMoodScreen(
                         },
                         currentSongId = stablePlayerState.currentSong?.id,
                         isPlaying = stablePlayerState.isPlaying,
+                        onTrackLongPress = { trackForOptions = it },
                     )
                 }
             }
+        }
+    }
+
+    trackForOptions?.let { track ->
+        ModalBottomSheet(onDismissRequest = { trackForOptions = null }) {
+            YtTrackOptionsSheetContent(
+                track = track,
+                onPlayNext = {
+                    playerViewModel.addSongNextToQueue(track.toSong())
+                    trackForOptions = null
+                },
+                onAddToQueue = {
+                    playerViewModel.addSongToQueue(track.toSong())
+                    trackForOptions = null
+                },
+                onStartRadio = {
+                    trackForOptions = null
+                    scope.launch {
+                        val radio = radioViewModel.radioSongsFor(track)
+                        playerViewModel.playSongs(radio, radio.first(), "${track.title} Radio")
+                    }
+                },
+                onGoToAlbum = track.albumBrowseId?.let { albumId ->
+                    {
+                        trackForOptions = null
+                        navController.navigateSafely(
+                            Screen.YtPage.createRoute(YtPageKind.ALBUM, albumId)
+                        )
+                    }
+                },
+                onGoToArtist = track.artists.firstOrNull { it.channelId != null }?.channelId?.let { channelId ->
+                    {
+                        trackForOptions = null
+                        navController.navigateSafely(
+                            Screen.YtPage.createRoute(YtPageKind.ARTIST, channelId)
+                        )
+                    }
+                },
+            )
         }
     }
 }

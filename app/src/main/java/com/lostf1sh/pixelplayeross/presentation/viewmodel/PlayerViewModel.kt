@@ -47,6 +47,7 @@ import com.lostf1sh.pixelplayeross.data.model.Lyrics
 import com.lostf1sh.pixelplayeross.data.model.LyricsSourcePreference
 import com.lostf1sh.pixelplayeross.data.model.SearchFilterType
 import com.lostf1sh.pixelplayeross.data.model.Song
+import com.lostf1sh.pixelplayeross.data.model.YTM_URI_SCHEME
 import com.lostf1sh.pixelplayeross.data.model.isYouTubeSong
 import com.lostf1sh.pixelplayeross.data.model.toSong
 import com.lostf1sh.pixelplayeross.data.model.youtubeVideoId
@@ -111,6 +112,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -1143,6 +1145,24 @@ class PlayerViewModel @Inject constructor(
      * [favoriteSongIds] — YTM video ids can't collide with the local Room Long ids.
      */
     private val ytLikedVideoIds = MutableStateFlow<Set<String>>(emptySet())
+
+    /** YTM-style autoplay: continue an ended queue with a radio seeded from its last track. */
+    private val ytAutoplayEnabled: StateFlow<Boolean> = userPreferencesRepository
+        .ytmAutoplayEnabledFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    /** Global playback speed; applied to the player by MusicService's preference collector. */
+    val playbackSpeed: StateFlow<Float> = userPreferencesRepository
+        .playbackSpeedFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1f)
+
+    fun setPlaybackSpeed(speed: Float) {
+        // Snap to 0.05 increments so slider drags persist clean values (1.25, not 1.2500001).
+        val snapped = (speed * 20).roundToInt() / 20f
+        viewModelScope.launch {
+            userPreferencesRepository.setPlaybackSpeed(snapped.coerceIn(0.5f, 2f))
+        }
+    }
 
     val favoriteSongIds: StateFlow<Set<String>> = combine(
         musicRepository.getFavoriteSongIdsFlow(),
@@ -3439,7 +3459,10 @@ class PlayerViewModel @Inject constructor(
         val controller = mediaController ?: return
         val queueSourceName = _playerUiState.value.currentQueueSourceName
         val remaining = controller.mediaItemCount - controller.currentMediaItemIndex - 1
-        if (!ytRadioSession.isActiveFor(queueSourceName)) return
+        if (!ytRadioSession.isActiveFor(queueSourceName)) {
+            maybeStartAutoplayRadio(controller, queueSourceName, remaining)
+            return
+        }
         Timber.tag("YtRadio").d("radio queue %s: %d tracks remaining", queueSourceName, remaining)
         // Extend once the listener is within 5 tracks of the queue's end.
         if (remaining > 5) return
@@ -3456,6 +3479,51 @@ class PlayerViewModel @Inject constructor(
             if (fresh.isEmpty()) return@launch
             controller.addMediaItems(fresh.map { buildPlaybackMediaItem(it) })
             Timber.tag("YtRadio").d("extended radio queue with %d tracks", fresh.size)
+        }
+    }
+
+    /**
+     * YTM-style autoplay: when a non-radio queue is about to run out on YTM content,
+     * seed a radio from the queue's last track and append it so the music keeps going.
+     * Arms [ytRadioSession] under the current queue name, so every later extension
+     * flows through the normal radio-continuation path in [maybeExtendRadioQueue].
+     */
+    private fun maybeStartAutoplayRadio(
+        controller: MediaController,
+        queueSourceName: String,
+        remaining: Int,
+    ) {
+        if (!ytAutoplayEnabled.value) return
+        if (remaining > 1) return
+        if (controller.mediaItemCount == 0) return
+        if (controller.repeatMode != Player.REPEAT_MODE_OFF) return
+        if (radioExtendJob?.isActive == true) return
+
+        val lastItem = controller.getMediaItemAt(controller.mediaItemCount - 1)
+        val lastUri = lastItem.mediaMetadata.extras
+            ?.getString(MediaItemBuilder.EXTERNAL_EXTRA_CONTENT_URI)
+            ?: lastItem.localConfiguration?.uri?.toString()
+        val videoId = lastUri
+            ?.takeIf { it.startsWith("$YTM_URI_SCHEME://") }
+            ?.removePrefix("$YTM_URI_SCHEME://")
+            ?: return
+
+        radioExtendJob = viewModelScope.launch {
+            val page = runCatching { youTubeRepository.radioFor(videoId) }
+                .onFailure { Timber.tag("YtRadio").w(it, "autoplay radio seed failed") }
+                .getOrNull() ?: return@launch
+            val existingIds = buildSet {
+                for (i in 0 until controller.mediaItemCount) add(controller.getMediaItemAt(i).mediaId)
+            }
+            val fresh = page.tracks
+                .map { it.toSong() }
+                .filter { it.id !in existingIds }
+            if (fresh.isEmpty()) return@launch
+            controller.addMediaItems(fresh.map { buildPlaybackMediaItem(it) })
+            ytRadioSession.start(queueSourceName, page.continuation)
+            Timber.tag("YtRadio").d(
+                "autoplay: seeded radio from %s with %d tracks", videoId, fresh.size
+            )
         }
     }
 

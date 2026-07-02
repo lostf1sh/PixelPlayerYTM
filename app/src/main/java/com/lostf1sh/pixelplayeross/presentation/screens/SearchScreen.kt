@@ -489,6 +489,7 @@ private fun SearchResultsContent(
                                 song = song,
                                 isPlaying = isPlaying,
                                 isCurrentSong = currentSongId == entry.track.videoId,
+                                onLongPress = { onTrackMoreOptions(entry.track) },
                                 onMoreOptionsClick = { onTrackMoreOptions(entry.track) },
                                 onClick = {
                                     val queue = resultSongs.ifEmpty { listOf(song) }

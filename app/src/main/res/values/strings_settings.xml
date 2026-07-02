@@ -282,6 +282,8 @@
     <string name="setcat_ytm_quality_low">Data saver</string>
     <string name="setcat_ytm_normalization_title">Loudness normalization</string>
     <string name="setcat_ytm_normalization_subtitle">Level out volume between tracks using YouTube\'s loudness data</string>
+    <string name="setcat_ytm_autoplay_title">Autoplay</string>
+    <string name="setcat_ytm_autoplay_subtitle">Keep the music going with similar songs when the queue ends</string>
     <string name="setcat_ytm_storage">Storage</string>
     <string name="setcat_ytm_cache_title">Stream cache</string>
     <string name="setcat_ytm_cache_subtitle">%1$s of played music stored for instant and offline replays</string>
