@@ -146,13 +146,54 @@ internal object YouTubeResponseParser {
             carouselShelf(section, index)?.let(shelves::add)
         }
 
+        val title = header?.obj("title")?.runsText().orEmpty()
+        val heroImageUrl = headerThumbnail(header)
+        val headerArtists = headerArtists(header)
+
+        // Album pages keep per-track rows minimal (an index number, no thumbnail, an empty
+        // artist column) — the cover and artist live only in the header. Backfill so every
+        // track is self-describing; rows that carry their own metadata are left alone. A
+        // row without its own thumbnail is album-style, so the page title is its album.
+        val hydratedTracks = tracks.values.map { track ->
+            track.copy(
+                album = track.album
+                    ?: title.ifBlank { null }?.takeIf { track.thumbnailUrl == null },
+                artists = track.artists.ifEmpty { headerArtists },
+                thumbnailUrl = track.thumbnailUrl ?: heroImageUrl,
+            )
+        }
+
         return YtBrowsePage(
-            title = header?.obj("title")?.runsText().orEmpty(),
+            title = title,
             subtitle = header?.obj("subtitle")?.runsText()?.ifBlank { null },
-            heroImageUrl = headerThumbnail(header),
-            tracks = tracks.values.toList(),
+            heroImageUrl = heroImageUrl,
+            tracks = hydratedTracks,
             shelves = shelves,
         )
+    }
+
+    /**
+     * The page owner's artist links from a detail/immersive header: linked (`UC…`) subtitle
+     * or strapline runs, falling back to the middle segment of "Album • Artist • Year".
+     */
+    private fun headerArtists(header: JsonObject?): List<YtArtistLink> {
+        if (header == null) return emptyList()
+        for (byline in listOf(header.obj("subtitle"), header.obj("straplineTextOne"))) {
+            val linked = byline.arr("runs")?.objects().orEmpty()
+                .mapNotNull { run ->
+                    val channelId = run.obj("navigationEndpoint").obj("browseEndpoint")
+                        .str("browseId")?.takeIf { it.startsWith("UC") }
+                        ?: return@mapNotNull null
+                    YtArtistLink(run.str("text").orEmpty(), channelId)
+                }
+                .filter { it.name.isNotBlank() }
+                .toList()
+            if (linked.isNotEmpty()) return linked
+        }
+        val segments = header.obj("subtitle")?.runsText()?.split(" • ").orEmpty()
+        return segments.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }
+            ?.let { listOf(YtArtistLink(it)) }
+            ?: emptyList()
     }
 
     /** Rows/cards of a library page: saved playlists, albums, artists or songs. */
