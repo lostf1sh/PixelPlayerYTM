@@ -6,6 +6,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
+import timber.log.Timber
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -113,17 +114,25 @@ private fun LoginWebView(
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                // Desktop Chrome UA: Google refuses login to the stock Android WebView UA.
-                settings.userAgentString =
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                // Turn the WebView's UA into a genuine mobile-Chrome one consistent with the
+                // device: strip the three embedded-browser tells Google keys on — "; wv",
+                // the "Version/4.0" token (real Chrome has no Version/), and the "Build/…"
+                // fragment. A desktop UA would be worse (Windows string on an Android device).
+                settings.userAgentString = settings.userAgentString
+                    .replace("; wv", "")
+                    .replace(Regex("""Version/[0-9.]+ """), "")
+                    .replace(Regex(""" Build/[^)]+"""), "")
                 // Android auto-injects `X-Requested-With: <package>` on every request, which
                 // is Google's primary "embedded WebView" tell behind the "browser may not be
                 // secure" block. An empty allow-list sends it to no origin, suppressing it.
-                if (WebViewFeature.isFeatureSupported(
-                        WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST
-                    )
-                ) {
+                val canSuppress = WebViewFeature.isFeatureSupported(
+                    WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST
+                )
+                Timber.tag("YtLogin").d(
+                    "requested-with suppression supported=%s; ua=%s",
+                    canSuppress, settings.userAgentString,
+                )
+                if (canSuppress) {
                     WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
                 }
 
