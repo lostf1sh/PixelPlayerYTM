@@ -35,6 +35,10 @@ data class Song(
     val mimeType: String?,
     val bitrate: Int?,
     val sampleRate: Int?,
+    /** YTM album page (`MPRE…` browseId) this track belongs to; null for local tracks. */
+    val albumBrowseId: String? = null,
+    /** YTM channel id (`UC…`) of the primary artist; null for local tracks. */
+    val artistChannelId: String? = null,
 ) : Parcelable {
     /**
      * Returns the display string for artists.

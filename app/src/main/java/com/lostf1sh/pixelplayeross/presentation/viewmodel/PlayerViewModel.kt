@@ -47,7 +47,9 @@ import com.lostf1sh.pixelplayeross.data.model.Lyrics
 import com.lostf1sh.pixelplayeross.data.model.LyricsSourcePreference
 import com.lostf1sh.pixelplayeross.data.model.SearchFilterType
 import com.lostf1sh.pixelplayeross.data.model.Song
+import com.lostf1sh.pixelplayeross.data.model.isYouTubeSong
 import com.lostf1sh.pixelplayeross.data.model.toSong
+import com.lostf1sh.pixelplayeross.data.model.youtubeVideoId
 import com.lostf1sh.pixelplayeross.data.model.SortOption
 import com.lostf1sh.pixelplayeross.data.model.toLibraryTabIdOrNull
 import com.lostf1sh.pixelplayeross.data.provider.SharedArtworkContentProvider
@@ -97,6 +99,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -275,7 +278,8 @@ class PlayerViewModel @Inject constructor(
     val playlistSelectionStateHolder: PlaylistSelectionStateHolder,
     private val sessionToken: SessionToken,
     private val mediaControllerFactory: com.lostf1sh.pixelplayeross.data.media.MediaControllerFactory,
-    private val ytRadioSession: com.lostf1sh.pixelplayeross.data.youtube.YtRadioSession
+    private val ytRadioSession: com.lostf1sh.pixelplayeross.data.youtube.YtRadioSession,
+    private val youTubeRepository: com.lostf1sh.pixelplayeross.data.youtube.YouTubeRepository
 ) : ViewModel() {
 
     private val _playerUiState = MutableStateFlow(PlayerUiState())
@@ -842,6 +846,7 @@ class PlayerViewModel @Inject constructor(
     lateinit var imageCacheManager: com.lostf1sh.pixelplayeross.data.media.ImageCacheManager
 
     init {
+        seedYtLikedIds()
         // Initialize helper classes with our coroutine scope
         listeningStatsTracker.initialize(viewModelScope)
         dailyMixStateHolder.initialize(viewModelScope)
@@ -1132,8 +1137,17 @@ class PlayerViewModel @Inject constructor(
     private val _playbackAudioMetadata = MutableStateFlow(PlaybackAudioMetadata())
     val playbackAudioMetadata: StateFlow<PlaybackAudioMetadata> = _playbackAudioMetadata.asStateFlow()
 
-    val favoriteSongIds: StateFlow<Set<String>> = musicRepository
-        .getFavoriteSongIdsFlow()
+    /**
+     * Video ids the signed-in account has liked on YTM. Seeded from the account's liked
+     * songs, then kept in sync optimistically as the user toggles likes. Merged into
+     * [favoriteSongIds] — YTM video ids can't collide with the local Room Long ids.
+     */
+    private val ytLikedVideoIds = MutableStateFlow<Set<String>>(emptySet())
+
+    val favoriteSongIds: StateFlow<Set<String>> = combine(
+        musicRepository.getFavoriteSongIdsFlow(),
+        ytLikedVideoIds,
+    ) { local, yt -> local + yt }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
     val isCurrentSongFavorite: StateFlow<Boolean> = combine(
@@ -2784,6 +2798,7 @@ class PlayerViewModel @Inject constructor(
                     )
                     syncPlaybackPositionFromPlayer(playerCtrl.currentMediaItem?.mediaId, readyPosition)
                     playbackStateHolder.updateStablePlayerState { it.copy(totalDuration = resolvedDuration) }
+                    backfillDurationExtraIfMissing()
                     startProgressUpdates()
                 }
                 if (playbackState == Player.STATE_IDLE && playerCtrl.mediaItemCount == 0) {
@@ -3252,8 +3267,55 @@ class PlayerViewModel @Inject constructor(
         musicRepository.setFavoriteStatus(songId, isFavorite)
     }
 
+    /** Seed [ytLikedVideoIds] from the account's liked songs whenever sign-in state changes. */
+    private fun seedYtLikedIds() {
+        viewModelScope.launch {
+            youTubeRepository.isSignedIn.collectLatest { signedIn ->
+                if (!signedIn) {
+                    ytLikedVideoIds.value = emptySet()
+                    return@collectLatest
+                }
+                runCatching {
+                    val ids = mutableSetOf<String>()
+                    var (tracks, continuation) = youTubeRepository.likedSongs()
+                    ids += tracks.map { it.videoId }
+                    var pageGuard = 0
+                    while (continuation != null && pageGuard++ < 20) {
+                        val more = youTubeRepository.likedSongsMore(continuation!!)
+                        ids += more.first.map { it.videoId }
+                        continuation = more.second
+                    }
+                    ids
+                }.onSuccess { ids ->
+                    // Keep likes toggled while the fetch was in flight.
+                    ytLikedVideoIds.update { it + ids }
+                }.onFailure {
+                    Timber.tag("YtLikes").w(it, "couldn't seed liked song ids")
+                }
+            }
+        }
+    }
+
+    /** Like/unlike a YTM track on the account, optimistically updating the local state. */
+    private fun setYtLiked(song: Song, liked: Boolean) {
+        val videoId = song.youtubeVideoId() ?: return
+        ytLikedVideoIds.update { if (liked) it + videoId else it - videoId }
+        viewModelScope.launch {
+            runCatching { youTubeRepository.setLiked(videoId, liked) }
+                .onFailure { error ->
+                    Timber.tag("YtLikes").w(error, "setLiked(%s, %s) failed", videoId, liked)
+                    ytLikedVideoIds.update { if (liked) it - videoId else it + videoId }
+                    _toastEvents.emit(context.getString(R.string.yt_like_failed))
+                }
+        }
+    }
+
     fun toggleFavorite() {
         val currentSong = playbackStateHolder.stablePlayerState.value.currentSong ?: return
+        if (currentSong.isYouTubeSong()) {
+            setYtLiked(currentSong, !ytLikedVideoIds.value.contains(currentSong.id))
+            return
+        }
         viewModelScope.launch {
             val favoriteSongId = resolveFavoriteSongId(currentSong) ?: return@launch
             val currentlyFavorite = favoriteSongIds.value.contains(favoriteSongId)
@@ -3262,6 +3324,11 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun toggleFavoriteSpecificSong(song: Song, removing: Boolean = false) {
+        if (song.isYouTubeSong()) {
+            val target = if (removing) false else !ytLikedVideoIds.value.contains(song.id)
+            setYtLiked(song, target)
+            return
+        }
         viewModelScope.launch {
             val favoriteSongId = resolveFavoriteSongId(song) ?: return@launch
             val currentlyFavorite = favoriteSongIds.value.contains(favoriteSongId)
@@ -3272,6 +3339,10 @@ class PlayerViewModel @Inject constructor(
 
     private suspend fun resolveFavoriteSongId(song: Song?): String? {
         song ?: return null
+        // YTM tracks live on the account, keyed by their video id (== Song.id).
+        if (song.isYouTubeSong()) {
+            return song.id
+        }
         if (song.id.toLongOrNull() != null) {
             return song.id
         }
@@ -3329,6 +3400,40 @@ class PlayerViewModel @Inject constructor(
      * to the following page on the next transition.
      */
     private var radioExtendJob: Job? = null
+
+    /**
+     * Some YTM surfaces (quick picks cards, top search result, radio rows) don't carry a
+     * duration at parse time, so their queue items sit at 0:00 in the queue/info sheets.
+     * Once the player has the authoritative duration, write it back into the item's
+     * metadata extras so every sheet resolving this song sees the real value.
+     */
+    private fun backfillDurationExtraIfMissing() {
+        val controller = mediaController ?: return
+        val index = controller.currentMediaItemIndex
+        if (index == C.INDEX_UNSET) return
+        val item = controller.currentMediaItem ?: return
+        val reported = controller.duration
+        if (reported == C.TIME_UNSET || reported <= 0L) return
+        val extras = item.mediaMetadata.extras ?: return
+        if (extras.getLong(MediaItemBuilder.EXTERNAL_EXTRA_DURATION, 0L) > 0L) return
+
+        val patchedExtras = android.os.Bundle(extras).apply {
+            putLong(MediaItemBuilder.EXTERNAL_EXTRA_DURATION, reported)
+        }
+        val patched = item.buildUpon()
+            .setMediaMetadata(item.mediaMetadata.buildUpon().setExtras(patchedExtras).build())
+            .build()
+        controller.replaceMediaItem(index, patched)
+
+        playbackStateHolder.updateStablePlayerState { state ->
+            val current = state.currentSong
+            if (current != null && current.id == item.mediaId && current.duration <= 0L) {
+                state.copy(currentSong = current.copy(duration = reported))
+            } else {
+                state
+            }
+        }
+    }
 
     private fun maybeExtendRadioQueue() {
         val controller = mediaController ?: return

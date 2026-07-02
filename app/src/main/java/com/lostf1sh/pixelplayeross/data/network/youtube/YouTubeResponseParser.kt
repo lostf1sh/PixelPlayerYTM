@@ -1,5 +1,6 @@
 package com.lostf1sh.pixelplayeross.data.network.youtube
 
+import com.lostf1sh.pixelplayeross.data.model.YtAccountInfo
 import com.lostf1sh.pixelplayeross.data.model.YtArtistLink
 import com.lostf1sh.pixelplayeross.data.model.YtBrowsePage
 import com.lostf1sh.pixelplayeross.data.model.YtFeedPage
@@ -25,6 +26,24 @@ import kotlinx.serialization.json.contentOrNull
  * (ytmusicapi, InnerTune).
  */
 internal object YouTubeResponseParser {
+
+    // ─────────────────────────── Account ───────────────────────────
+
+    /** `account/account_menu` → the signed-in account's name / handle / email / avatar. */
+    fun accountInfo(root: JsonObject): YtAccountInfo? {
+        val header = root.arr("actions").objects()
+            .firstNotNullOfOrNull { action ->
+                action.obj("openPopupAction").obj("popup").obj("multiPageMenuRenderer")
+                    .obj("header").obj("activeAccountHeaderRenderer")
+            } ?: return null
+        val name = header.obj("accountName")?.runsText()?.ifBlank { null } ?: return null
+        return YtAccountInfo(
+            name = name,
+            handle = header.obj("channelHandle")?.runsText()?.ifBlank { null },
+            email = header.obj("email")?.runsText()?.ifBlank { null },
+            avatarUrl = thumbnailUrl(header.obj("accountPhoto"), targetSize = 128),
+        )
+    }
 
     // ─────────────────────────── Search ───────────────────────────
 
@@ -271,16 +290,18 @@ internal object YouTubeResponseParser {
         val title = flexColumnText(row, 0)?.runsText()?.ifBlank { null } ?: return null
         val byline = flexColumnText(row, 1)
 
+        // Column layout varies between contexts (and signed-in vs anonymous): album and
+        // duration can live in the byline, a later flex column, or a fixed column. Find
+        // the album by its MPRE… browse link and the duration by shape, not by position.
+        val albumRun = albumLinkRun(row)
         return YtTrack(
             videoId = videoId,
             title = title,
             artists = artistsFrom(byline),
-            album = flexColumnText(row, 2)?.runsText()?.ifBlank { null },
-            albumBrowseId = flexColumnText(row, 2).arr("runs").objAt(0)
-                .obj("navigationEndpoint").obj("browseEndpoint").str("browseId"),
-            durationMs = bylineDurationMs(byline)
-                ?: fixedColumnDurationMs(row)
-                ?: 0L,
+            album = albumRun?.str("text")
+                ?: flexColumnText(row, 2)?.runsText()?.ifBlank { null },
+            albumBrowseId = albumRun.obj("navigationEndpoint").obj("browseEndpoint").str("browseId"),
+            durationMs = anyColumnDurationMs(row) ?: 0L,
             thumbnailUrl = thumbnailUrl(row.obj("thumbnail")),
         )
     }
@@ -510,12 +531,30 @@ internal object YouTubeResponseParser {
         return if (plain.isNotEmpty()) listOf(YtArtistLink(plain)) else emptyList()
     }
 
-    /** The last run of a byline that looks like "3:45" / "1:02:33". */
-    private fun bylineDurationMs(byline: JsonObject?): Long? =
-        byline.arr("runs")?.objects().orEmpty()
+    /** First run in any flex column that links to an album page (MPRE… browseId). */
+    private fun albumLinkRun(row: JsonObject): JsonObject? =
+        row.arr("flexColumns")?.objects().orEmpty()
+            .flatMap { column ->
+                column.obj("musicResponsiveListItemFlexColumnRenderer").obj("text")
+                    .arr("runs").objects()
+            }
+            .firstOrNull { run ->
+                run.obj("navigationEndpoint").obj("browseEndpoint").str("browseId")
+                    ?.startsWith("MPRE") == true
+            }
+
+    /** The last run in any non-title column that looks like "3:45" / "1:02:33". */
+    private fun anyColumnDurationMs(row: JsonObject): Long? =
+        row.arr("flexColumns")?.objects().orEmpty()
+            .drop(1)
+            .flatMap { column ->
+                column.obj("musicResponsiveListItemFlexColumnRenderer").obj("text")
+                    .arr("runs").objects()
+            }
             .mapNotNull { it.str("text") }
             .lastOrNull { DURATION_TEXT.matches(it.trim()) }
             ?.let(::durationTextMs)
+            ?: fixedColumnDurationMs(row)
 
     private fun fixedColumnDurationMs(row: JsonObject): Long? =
         row.arr("fixedColumns").objAt(0)

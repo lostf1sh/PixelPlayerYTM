@@ -29,16 +29,22 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import coil.compose.AsyncImage
+import com.lostf1sh.pixelplayeross.data.model.YtAccountInfo
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.YtLoginViewModel
 
 /**
@@ -71,11 +77,13 @@ fun YtLoginScreen(
         },
     ) { innerPadding ->
         if (isSignedIn) {
+            val accountInfo by viewModel.accountInfo.collectAsStateWithLifecycle()
             SignedInContent(
                 modifier = Modifier
                     .padding(innerPadding)
                     .fillMaxSize()
                     .padding(horizontal = 32.dp),
+                accountInfo = accountInfo,
                 onSignOut = {
                     // Drop the WebView's cookie jar too — otherwise reopening this screen
                     // silently re-captures the just-signed-out session.
@@ -89,9 +97,11 @@ fun YtLoginScreen(
                     .padding(innerPadding)
                     .fillMaxSize(),
                 onCookieCaptured = { cookie ->
-                    if (viewModel.onCookiesCaptured(cookie)) {
+                    val saved = viewModel.onCookiesCaptured(cookie)
+                    if (saved) {
                         navController.popBackStack()
                     }
+                    saved
                 },
             )
         }
@@ -102,8 +112,22 @@ fun YtLoginScreen(
 @Composable
 private fun LoginWebView(
     modifier: Modifier,
-    onCookieCaptured: (String?) -> Unit,
+    onCookieCaptured: (String?) -> Boolean,
 ) {
+    // The cookie jar commits the SAPISID cookies asynchronously relative to page
+    // navigation — after a 2FA challenge the final music.youtube.com land often fires
+    // onPageFinished *before* the session cookies are visible, and no further page
+    // loads happen. So capture by polling the jar, not by page events: flush + read
+    // every half second until a usable session shows up.
+    LaunchedEffect(Unit) {
+        val cookieManager = CookieManager.getInstance()
+        while (true) {
+            cookieManager.flush()
+            val cookie = cookieManager.getCookie("https://music.youtube.com")
+            if (onCookieCaptured(cookie)) break
+            delay(500)
+        }
+    }
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -136,17 +160,9 @@ private fun LoginWebView(
                     WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
                 }
 
-                webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        super.onPageFinished(view, url)
-                        // Only music.youtube.com carries the SAPISID we need; the login
-                        // hops through accounts.google.com first, so check on every land.
-                        if (url != null && url.contains("music.youtube.com")) {
-                            val cookie = CookieManager.getInstance().getCookie("https://music.youtube.com")
-                            onCookieCaptured(cookie)
-                        }
-                    }
-                }
+                // Keep navigation in-view (the default handler punts to the browser);
+                // cookie capture happens in the polling loop above, not on page events.
+                webViewClient = WebViewClient()
                 loadUrl("https://accounts.google.com/ServiceLogin?continue=https://music.youtube.com/")
             }
         },
@@ -156,6 +172,7 @@ private fun LoginWebView(
 @Composable
 private fun SignedInContent(
     modifier: Modifier,
+    accountInfo: YtAccountInfo?,
     onSignOut: () -> Unit,
 ) {
     Column(
@@ -163,21 +180,33 @@ private fun SignedInContent(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            imageVector = Icons.Rounded.CheckCircle,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(72.dp),
-        )
+        if (accountInfo?.avatarUrl != null) {
+            AsyncImage(
+                model = accountInfo.avatarUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(CircleShape),
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Rounded.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(72.dp),
+            )
+        }
         Spacer(Modifier.height(16.dp))
         Text(
-            text = "You're signed in",
+            text = accountInfo?.name ?: "You're signed in",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Your library, mixes, and likes come from this account.",
+            text = accountInfo?.handle
+                ?: accountInfo?.email
+                ?: "Your library, mixes, and likes come from this account.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

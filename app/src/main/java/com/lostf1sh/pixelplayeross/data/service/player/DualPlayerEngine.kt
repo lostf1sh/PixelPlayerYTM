@@ -702,9 +702,10 @@ class DualPlayerEngine @Inject constructor(
 
     private fun applyWakeModeForCurrentItem() {
         if (!::playerA.isInitialized) return
+        applyAudioOffloadForCurrentItem()
         val mode = wakeModeFor(playerA.currentMediaItem)
         if (currentWakeMode == mode) return
-        
+
         try {
             playerA.setWakeMode(mode)
             playerB?.setWakeMode(mode)
@@ -713,6 +714,42 @@ class DualPlayerEngine @Inject constructor(
         } catch (e: Exception) {
             Timber.tag("DualPlayerEngine").w(e, "Failed to update wake mode")
         }
+    }
+
+    /**
+     * Audio offload is a local-files-only optimisation here. For network-fed tracks
+     * (YTM streams) the offload sleep/wake cycle audibly gaps on many devices the
+     * moment the app is backgrounded — the DSP drains its buffer while the CPU (and
+     * with it the network refill path) is asleep, producing a 1–2 s dropout before
+     * playback recovers. Keep the DSP path for local media, PCM for streams.
+     */
+    private fun offloadModeFor(mediaItem: MediaItem?): Int =
+        if (audioOffloadEnabled && isLikelyLocalMedia(mediaItem)) {
+            TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED
+        } else {
+            TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED
+        }
+
+    private fun applyAudioOffloadForCurrentItem() {
+        val mode = offloadModeFor(playerA.currentMediaItem)
+        try {
+            applyOffloadMode(playerA, mode)
+            playerB?.let { applyOffloadMode(it, mode) }
+        } catch (e: Exception) {
+            Timber.tag("DualPlayerEngine").w(e, "Failed to apply audio offload mode")
+        }
+    }
+
+    private fun applyOffloadMode(player: ExoPlayer, mode: Int) {
+        if (player.trackSelectionParameters.audioOffloadPreferences.audioOffloadMode == mode) return
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setAudioOffloadPreferences(
+                TrackSelectionParameters.AudioOffloadPreferences.Builder()
+                    .setAudioOffloadMode(mode)
+                    .build()
+            )
+            .build()
+        Timber.tag("DualPlayerEngine").d("Audio offload mode -> %d", mode)
     }
 
     private fun shouldDisableAudioOffloadByDefault(): Boolean {

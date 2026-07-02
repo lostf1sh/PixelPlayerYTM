@@ -59,9 +59,11 @@ class MediaMapper @Inject constructor(
             albumArtUriString = metadata.artworkUri?.toString(),
             duration = duration,
             dateAdded = dateAdded,
-            mimeType = null, 
+            mimeType = null,
             bitrate = null,
-            sampleRate = null
+            sampleRate = null,
+            albumBrowseId = extras?.getString(MediaItemBuilder.EXTERNAL_EXTRA_ALBUM_BROWSE_ID),
+            artistChannelId = extras?.getString(MediaItemBuilder.EXTERNAL_EXTRA_ARTIST_CHANNEL_ID)
         )
     }
 }

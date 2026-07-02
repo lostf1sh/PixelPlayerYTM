@@ -384,6 +384,7 @@ fun SettingsCategoryScreen(
                         SettingsCategory.YOUTUBE_MUSIC -> {
                             val ytSettingsViewModel: com.lostf1sh.pixelplayeross.presentation.viewmodel.YtSettingsViewModel = hiltViewModel()
                             val ytSignedIn by ytSettingsViewModel.isSignedIn.collectAsStateWithLifecycle()
+                            val ytAccount by ytSettingsViewModel.accountInfo.collectAsStateWithLifecycle()
                             val ytNormalization by ytSettingsViewModel.normalizationEnabled.collectAsStateWithLifecycle()
                             val ytQuality by ytSettingsViewModel.audioQuality.collectAsStateWithLifecycle()
                             val ytCacheBytes by ytSettingsViewModel.cacheBytes.collectAsStateWithLifecycle()
@@ -391,9 +392,24 @@ fun SettingsCategoryScreen(
                             SettingsSubsection(title = stringResource(R.string.setcat_ytm_account)) {
                                 if (ytSignedIn) {
                                     SettingsItem(
-                                        title = stringResource(R.string.setcat_ytm_signed_in_title),
-                                        subtitle = stringResource(R.string.setcat_ytm_signed_in_subtitle),
-                                        leadingIcon = { Icon(Icons.Outlined.Person, null, tint = MaterialTheme.colorScheme.secondary) },
+                                        title = ytAccount?.name ?: stringResource(R.string.setcat_ytm_signed_in_title),
+                                        subtitle = ytAccount?.handle
+                                            ?: ytAccount?.email
+                                            ?: stringResource(R.string.setcat_ytm_signed_in_subtitle),
+                                        leadingIcon = {
+                                            val avatarUrl = ytAccount?.avatarUrl
+                                            if (avatarUrl != null) {
+                                                coil.compose.AsyncImage(
+                                                    model = avatarUrl,
+                                                    contentDescription = null,
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .clip(androidx.compose.foundation.shape.CircleShape),
+                                                )
+                                            } else {
+                                                Icon(Icons.Outlined.Person, null, tint = MaterialTheme.colorScheme.secondary)
+                                            }
+                                        },
                                         onClick = {}
                                     )
                                     SettingsItem(

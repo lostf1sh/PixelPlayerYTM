@@ -2,6 +2,7 @@ package com.lostf1sh.pixelplayeross.data.youtube
 
 import com.lostf1sh.pixelplayeross.data.model.Lyrics
 import com.lostf1sh.pixelplayeross.data.model.SyncedLine
+import com.lostf1sh.pixelplayeross.data.model.YtAccountInfo
 import com.lostf1sh.pixelplayeross.data.model.YtBrowsePage
 import com.lostf1sh.pixelplayeross.data.model.YtFeedPage
 import com.lostf1sh.pixelplayeross.data.model.YtRadioPage
@@ -38,6 +39,14 @@ class YouTubeRepository @Inject constructor(
 
     /** Whether library endpoints will return the user's data rather than a sign-in wall. */
     val isSignedIn: StateFlow<Boolean> get() = accountStore.isSignedIn
+
+    /** Who's signed in (name/handle/avatar), as last cached by [refreshAccountInfo]. */
+    val accountInfo: StateFlow<YtAccountInfo?> get() = accountStore.accountInfo
+
+    /** Fetch and cache the signed-in account's identity for the settings/account UI. */
+    suspend fun refreshAccountInfo(): YtAccountInfo? =
+        YouTubeResponseParser.accountInfo(innerTube.call("account/account_menu"))
+            ?.also(accountStore::saveAccountInfo)
 
     // ─────────────────────────── Search ───────────────────────────
 

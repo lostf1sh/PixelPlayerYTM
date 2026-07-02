@@ -412,7 +412,7 @@ fun LibraryScreen(
 
 /**
  * M3-expressive segmented selector: equal-width segments in one pill container; the
- * selected segment fills with primary and morphs from pill towards a rounded square.
+ * selected segment fills with primary as a fully rounded pill, matching the nav bar.
  */
 @Composable
 private fun LibrarySectionSelector(
@@ -443,7 +443,7 @@ private fun LibrarySectionSelector(
                 label = "sectionLabel",
             )
             val corner by animateDpAsState(
-                targetValue = if (selected) 14.dp else 24.dp,
+                targetValue = if (selected) 22.dp else 24.dp,
                 animationSpec = spring(),
                 label = "sectionCorner",
             )

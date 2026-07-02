@@ -9,6 +9,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavHostController
 import com.lostf1sh.pixelplayeross.data.model.Song
+import com.lostf1sh.pixelplayeross.data.model.YtPageKind
 import com.lostf1sh.pixelplayeross.presentation.navigation.Screen
 import com.lostf1sh.pixelplayeross.presentation.navigation.navigateSafelyReplacing
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerViewModel
@@ -82,12 +83,18 @@ internal fun rememberSheetActionHandlers(
             playerViewModelState.value.collapsePlayerSheet()
             queueSheetControllerState.value.animate(false)
             sheetModalOverlayControllerState.value.updateSelectedSongForInfo(null)
-            if (song.albumId != -1L) {
+            if (song.albumBrowseId != null) {
+                navController.navigateSafelyReplacing(
+                    route = Screen.YtPage.createRoute(YtPageKind.ALBUM, song.albumBrowseId),
+                    patternToPop = Screen.YtPage.route
+                )
+            } else if (song.albumId != -1L) {
                 navController.navigateSafelyReplacing(
                     route = Screen.AlbumDetail.createRoute(song.albumId),
                     patternToPop = Screen.AlbumDetail.route
                 )
             }
+            Unit
         }
     }
     val onNavigateToArtist = remember(scope, navController) {
@@ -98,12 +105,18 @@ internal fun rememberSheetActionHandlers(
             playerViewModelState.value.collapsePlayerSheet()
             queueSheetControllerState.value.animate(false)
             sheetModalOverlayControllerState.value.updateSelectedSongForInfo(null)
-            if (song.artistId != -1L) {
+            if (song.artistChannelId != null) {
+                navController.navigateSafelyReplacing(
+                    route = Screen.YtPage.createRoute(YtPageKind.ARTIST, song.artistChannelId),
+                    patternToPop = Screen.YtPage.route
+                )
+            } else if (song.artistId != -1L) {
                 navController.navigateSafelyReplacing(
                     route = Screen.ArtistDetail.createRoute(song.artistId),
                     patternToPop = Screen.ArtistDetail.route
                 )
             }
+            Unit
         }
     }
     val onNavigateToGenre = remember(scope, navController) {

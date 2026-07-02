@@ -14,6 +14,15 @@ fun Song.youtubeVideoId(): String? =
     contentUriString.takeIf { it.startsWith("$YTM_URI_SCHEME://") }
         ?.removePrefix("$YTM_URI_SCHEME://")
 
+/** The signed-in Google account as reported by `account/account_menu`. */
+@Immutable
+data class YtAccountInfo(
+    val name: String,
+    val handle: String? = null,
+    val email: String? = null,
+    val avatarUrl: String? = null,
+)
+
 /** An artist name as it appears on a YTM row, optionally linked to a `UC…` channel. */
 @Immutable
 data class YtArtistLink(
@@ -63,6 +72,8 @@ fun YtTrack.toSong(): Song = Song(
     mimeType = null,
     bitrate = null,
     sampleRate = null,
+    albumBrowseId = albumBrowseId,
+    artistChannelId = artists.firstNotNullOfOrNull { it.channelId },
 )
 
 /** What a non-track card links to. */

@@ -242,7 +242,11 @@ class PlayerViewModelTest {
             mockMultiSelectionStateHolder,
             mockPlaylistSelectionStateHolder,
             sessionToken,
-            mockMediaControllerFactory
+            mockMediaControllerFactory,
+            mockk(relaxed = true),
+            mockk(relaxed = true) {
+                every { isSignedIn } returns kotlinx.coroutines.flow.MutableStateFlow(false)
+            }
         )
     }
 

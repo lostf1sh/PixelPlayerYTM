@@ -2,6 +2,7 @@ package com.lostf1sh.pixelplayeross.data.network.youtube.auth
 
 import android.content.Context
 import androidx.core.content.edit
+import com.lostf1sh.pixelplayeross.data.model.YtAccountInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,6 +56,34 @@ class YtAccountStore @Inject constructor(
         cookieValue = null
         prefs.edit { clear() }
         _isSignedIn.value = false
+        _accountInfo.value = null
+    }
+
+    // ─────────────────────── Account identity ───────────────────────
+
+    private val _accountInfo = MutableStateFlow(readAccountInfo())
+
+    /** Who's signed in (name/handle/avatar), cached from `account/account_menu`. */
+    val accountInfo: StateFlow<YtAccountInfo?> = _accountInfo.asStateFlow()
+
+    fun saveAccountInfo(info: YtAccountInfo) {
+        prefs.edit {
+            putString(KEY_ACCOUNT_NAME, info.name)
+            putString(KEY_ACCOUNT_HANDLE, info.handle)
+            putString(KEY_ACCOUNT_EMAIL, info.email)
+            putString(KEY_ACCOUNT_AVATAR, info.avatarUrl)
+        }
+        _accountInfo.value = info
+    }
+
+    private fun readAccountInfo(): YtAccountInfo? {
+        val name = prefs.getString(KEY_ACCOUNT_NAME, null) ?: return null
+        return YtAccountInfo(
+            name = name,
+            handle = prefs.getString(KEY_ACCOUNT_HANDLE, null),
+            email = prefs.getString(KEY_ACCOUNT_EMAIL, null),
+            avatarUrl = prefs.getString(KEY_ACCOUNT_AVATAR, null),
+        )
     }
 
     private fun extractSapisid(cookie: String?): String? {
@@ -70,5 +99,9 @@ class YtAccountStore @Inject constructor(
     private companion object {
         const val PREFS = "yt_account"
         const val KEY_COOKIE = "cookie"
+        const val KEY_ACCOUNT_NAME = "account_name"
+        const val KEY_ACCOUNT_HANDLE = "account_handle"
+        const val KEY_ACCOUNT_EMAIL = "account_email"
+        const val KEY_ACCOUNT_AVATAR = "account_avatar"
     }
 }

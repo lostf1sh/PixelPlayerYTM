@@ -639,7 +639,9 @@ fun SongInfoBottomSheet(
                                                     iconDescription = stringResource(R.string.cd_artist_icon),
                                                     shape = infoSegmentItemShape,
                                                     onClick = {
-                                                        if (song.artists.size > 1) {
+                                                        // YTM songs only carry the primary artist's channel,
+                                                        // so the by-id picker can't route the others.
+                                                        if (song.artists.size > 1 && song.artistChannelId == null) {
                                                             showArtistPicker = true
                                                         } else {
                                                             onNavigateToArtist()

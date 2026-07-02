@@ -29,7 +29,8 @@ class LyricsRepositoryImplTest {
             lrcLibApiService = mockk<LrcLibApiService>(relaxed = true),
             lyricsDao = mockk<LyricsDao>(relaxed = true),
             okHttpClient = mockk<OkHttpClient>(relaxed = true),
-            userPreferencesRepository = userPreferencesRepository()
+            userPreferencesRepository = userPreferencesRepository(),
+            youTubeRepository = mockk(relaxed = true)
         )
         val song = Song(
             id = "12",
@@ -64,7 +65,8 @@ class LyricsRepositoryImplTest {
             lrcLibApiService = apiService,
             lyricsDao = mockk<LyricsDao>(relaxed = true),
             okHttpClient = mockk<OkHttpClient>(relaxed = true),
-            userPreferencesRepository = userPreferencesRepository()
+            userPreferencesRepository = userPreferencesRepository(),
+            youTubeRepository = mockk(relaxed = true)
         )
         val song = Song(
             id = "45",
@@ -107,7 +109,8 @@ class LyricsRepositoryImplTest {
             lrcLibApiService = apiService,
             lyricsDao = lyricsDao,
             okHttpClient = mockk<OkHttpClient>(relaxed = true),
-            userPreferencesRepository = userPreferencesRepository()
+            userPreferencesRepository = userPreferencesRepository(),
+            youTubeRepository = mockk(relaxed = true)
         )
         val song = Song(
             id = "77",
@@ -147,7 +150,8 @@ class LyricsRepositoryImplTest {
             lrcLibApiService = apiService,
             lyricsDao = lyricsDao,
             okHttpClient = mockk<OkHttpClient>(relaxed = true),
-            userPreferencesRepository = userPreferencesRepository(externalLyricsEnabled = false)
+            userPreferencesRepository = userPreferencesRepository(externalLyricsEnabled = false),
+            youTubeRepository = mockk(relaxed = true)
         )
         val song = testSong(
             id = "105",
@@ -183,7 +187,8 @@ class LyricsRepositoryImplTest {
             lrcLibApiService = apiService,
             lyricsDao = lyricsDao,
             okHttpClient = mockk<OkHttpClient>(relaxed = true),
-            userPreferencesRepository = userPreferencesRepository()
+            userPreferencesRepository = userPreferencesRepository(),
+            youTubeRepository = mockk(relaxed = true)
         )
         val song = testSong(
             id = "101",
@@ -216,7 +221,8 @@ class LyricsRepositoryImplTest {
             lrcLibApiService = apiService,
             lyricsDao = lyricsDao,
             okHttpClient = mockk<OkHttpClient>(relaxed = true),
-            userPreferencesRepository = userPreferencesRepository()
+            userPreferencesRepository = userPreferencesRepository(),
+            youTubeRepository = mockk(relaxed = true)
         )
         val song = testSong(
             id = "102",
@@ -249,7 +255,8 @@ class LyricsRepositoryImplTest {
             lrcLibApiService = apiService,
             lyricsDao = lyricsDao,
             okHttpClient = mockk<OkHttpClient>(relaxed = true),
-            userPreferencesRepository = userPreferencesRepository()
+            userPreferencesRepository = userPreferencesRepository(),
+            youTubeRepository = mockk(relaxed = true)
         )
         val song = testSong(
             id = "103",
@@ -283,7 +290,8 @@ class LyricsRepositoryImplTest {
             lrcLibApiService = apiService,
             lyricsDao = lyricsDao,
             okHttpClient = mockk<OkHttpClient>(relaxed = true),
-            userPreferencesRepository = userPreferencesRepository()
+            userPreferencesRepository = userPreferencesRepository(),
+            youTubeRepository = mockk(relaxed = true)
         )
         val song = testSong(
             id = "104",
