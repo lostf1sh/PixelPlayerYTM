@@ -1,9 +1,13 @@
 package com.lostf1sh.pixelplayeross.presentation.screens
 
+import android.accounts.AccountManager
 import android.annotation.SuppressLint
+import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -95,18 +99,50 @@ fun YtLoginScreen(
                 },
             )
         } else {
-            LoginWebView(
-                modifier = Modifier
-                    .padding(innerPadding)
-                    .fillMaxSize(),
-                onCookieCaptured = { cookie ->
-                    val saved = viewModel.onCookiesCaptured(cookie)
-                    if (saved) {
-                        navController.popBackStack()
-                    }
-                    saved
-                },
-            )
+            // The web account chooser only knows accounts that signed in HERE before, but
+            // the DEVICE knows all of the user's Google accounts. Always open the native
+            // system account picker (no permission needed) and prefill the picked e-mail
+            // into Google's sign-in page — the user never types their address; Google then
+            // asks only for that account's verification (password/2FA once per account,
+            // or just a phone prompt for passwordless accounts; nothing at all when the
+            // jar still holds that account's session). Cancelling the picker falls back
+            // to the plain web chooser.
+            var startUrl by remember { mutableStateOf<String?>(null) }
+            val accountPicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                val email = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+                startUrl = if (email != null) {
+                    "$ACCOUNT_CHOOSER_URL&Email=${Uri.encode(email)}"
+                } else {
+                    ACCOUNT_CHOOSER_URL
+                }
+            }
+            LaunchedEffect(Unit) {
+                if (startUrl != null) return@LaunchedEffect
+                runCatching {
+                    accountPicker.launch(
+                        AccountManager.newChooseAccountIntent(
+                            null, null, arrayOf("com.google"), null, null, null, null,
+                        )
+                    )
+                }.onFailure { startUrl = ACCOUNT_CHOOSER_URL }
+            }
+            startUrl?.let { url ->
+                LoginWebView(
+                    modifier = Modifier
+                        .padding(innerPadding)
+                        .fillMaxSize(),
+                    startUrl = url,
+                    onCookieCaptured = { cookie ->
+                        val saved = viewModel.onCookiesCaptured(cookie)
+                        if (saved) {
+                            navController.popBackStack()
+                        }
+                        saved
+                    },
+                )
+            }
         }
     }
 }
@@ -115,6 +151,7 @@ fun YtLoginScreen(
 @Composable
 private fun LoginWebView(
     modifier: Modifier,
+    startUrl: String,
     onCookieCaptured: (String?) -> Boolean,
 ) {
     var webView by remember { mutableStateOf<WebView?>(null) }
@@ -155,7 +192,7 @@ private fun LoginWebView(
                 // Android WebViews (no "browser may not be secure" block), unlike the
                 // generic one the old spoofed-UA approach was working around.
                 webViewClient = WebViewClient()
-                loadUrl(ACCOUNT_CHOOSER_URL)
+                loadUrl(startUrl)
                 webView = this
             }
         },

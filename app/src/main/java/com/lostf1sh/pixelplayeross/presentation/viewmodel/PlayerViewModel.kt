@@ -848,7 +848,6 @@ class PlayerViewModel @Inject constructor(
     lateinit var imageCacheManager: com.lostf1sh.pixelplayeross.data.media.ImageCacheManager
 
     init {
-        seedYtLikedIds()
         // Initialize helper classes with our coroutine scope
         listeningStatsTracker.initialize(viewModelScope)
         dailyMixStateHolder.initialize(viewModelScope)
@@ -1162,6 +1161,14 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferencesRepository.setPlaybackSpeed(snapped.coerceIn(0.5f, 2f))
         }
+    }
+
+    // Kotlin runs property initializers and init blocks in declaration order: this init
+    // MUST stay below the properties seedYtLikedIds touches (ytLikedVideoIds above) —
+    // from the top-of-class init block the field is still null and the app crashes on
+    // launch.
+    init {
+        seedYtLikedIds()
     }
 
     val favoriteSongIds: StateFlow<Set<String>> = combine(
