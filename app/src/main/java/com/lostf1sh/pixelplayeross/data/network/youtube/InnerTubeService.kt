@@ -2,6 +2,7 @@ package com.lostf1sh.pixelplayeross.data.network.youtube
 
 import android.content.Context
 import androidx.core.content.edit
+import com.lostf1sh.pixelplayeross.data.network.youtube.auth.YtAccountStore
 import com.lostf1sh.pixelplayeross.di.YouTubeHttp
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +48,7 @@ class InnerTubeService @Inject constructor(
     @YouTubeHttp private val httpClient: OkHttpClient,
     private val json: Json,
     private val visitorStore: YtVisitorStore,
+    private val accountStore: YtAccountStore,
 ) {
 
     class YtApiException(val httpCode: Int, bodySnippet: String) :
@@ -72,7 +74,13 @@ class InnerTubeService @Inject constructor(
                     client.deviceModel?.let { put("deviceModel", it) }
                     visitorId?.let { put("visitorData", it) }
                 }
-                putJsonObject("user") { put("lockedSafetyMode", false) }
+                putJsonObject("user") {
+                    put("lockedSafetyMode", false)
+                    // The active identity (may be a brand/channel account, not the
+                    // cookie's primary Google account). Without this, likes/history/
+                    // playlist writes land on the wrong account for brand-account users.
+                    accountStore.dataSyncId?.let { put("onBehalfOfUser", it) }
+                }
             }
             payload()
         }
@@ -109,6 +117,38 @@ class InnerTubeService @Inject constructor(
         }
     }
 
+    /**
+     * The signed-in session's `DATASYNC_ID`, scraped from the ytcfg blob embedded in the
+     * music.youtube.com HTML (the same place the web client reads it from — there is no
+     * youtubei endpoint that returns it). The id identifies the ACTIVE identity, which for
+     * users who picked a brand/channel account at sign-in differs from the cookie's primary
+     * Google account. Null when logged out or when the page markup changes.
+     *
+     * Values look like `<activeGaiaId>||<primaryGaiaId>`; only the first segment is what
+     * `context.user.onBehalfOfUser` expects.
+     */
+    suspend fun fetchDataSyncId(): String? = withContext(Dispatchers.IO) {
+        val cookie = accountStore.cookieHeader ?: return@withContext null
+        val request = Request.Builder()
+            .url(ORIGIN)
+            .header("Cookie", cookie)
+            .header(
+                "User-Agent",
+                InnerTubeClientId.WEB_REMIX.userAgent,
+            )
+            .build()
+        runCatching {
+            httpClient.newCall(request).awaitResponse().use { response ->
+                if (!response.isSuccessful) return@use null
+                val html = response.body?.string().orEmpty()
+                DATASYNC_ID_REGEX.find(html)
+                    ?.groupValues?.get(1)
+                    ?.substringBefore("||")
+                    ?.takeIf { it.isNotBlank() }
+            }
+        }.onFailure { Timber.tag(TAG).w(it, "DATASYNC_ID fetch failed") }.getOrNull()
+    }
+
     /** Keep the anonymous visitor id stable so recommendations don't reset every launch. */
     private fun captureVisitorId(root: JsonObject) {
         val fresh = root["responseContext"]?.jsonObject
@@ -121,6 +161,7 @@ class InnerTubeService @Inject constructor(
         const val API_BASE = "https://music.youtube.com/youtubei/v1/"
         const val ORIGIN = "https://music.youtube.com"
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        val DATASYNC_ID_REGEX = Regex(""""DATASYNC_ID"\s*:\s*"([^"]+)"""")
     }
 }
 

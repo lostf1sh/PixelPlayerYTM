@@ -44,9 +44,15 @@ class YouTubeRepository @Inject constructor(
     val accountInfo: StateFlow<YtAccountInfo?> get() = accountStore.accountInfo
 
     /** Fetch and cache the signed-in account's identity for the settings/account UI. */
-    suspend fun refreshAccountInfo(): YtAccountInfo? =
-        YouTubeResponseParser.accountInfo(innerTube.call("account/account_menu"))
+    suspend fun refreshAccountInfo(): YtAccountInfo? {
+        // Backfill the active identity id (brand-account correctness) for sessions that
+        // signed in before it was captured. One HTML fetch, then cached in prefs.
+        if (accountStore.dataSyncId == null) {
+            innerTube.fetchDataSyncId()?.let(accountStore::saveDataSyncId)
+        }
+        return YouTubeResponseParser.accountInfo(innerTube.call("account/account_menu"))
             ?.also(accountStore::saveAccountInfo)
+    }
 
     // ─────────────────────────── Search ───────────────────────────
 

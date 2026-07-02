@@ -54,9 +54,29 @@ class YtAccountStore @Inject constructor(
 
     fun signOut() {
         cookieValue = null
+        dataSyncIdValue = null
         prefs.edit { clear() }
         _isSignedIn.value = false
         _accountInfo.value = null
+    }
+
+    // ─────────────────────── Active identity ───────────────────────
+
+    @Volatile
+    private var dataSyncIdValue: String? = prefs.getString(KEY_DATASYNC_ID, null)
+
+    /**
+     * The active identity's datasync id, sent as `context.user.onBehalfOfUser` on every
+     * InnerTube call. Without it Google routes writes (likes, history, playlists) to the
+     * cookie's primary Google account — wrong whenever the user picked a brand/channel
+     * account in the login flow. Null until first captured after sign-in.
+     */
+    val dataSyncId: String? get() = dataSyncIdValue
+
+    fun saveDataSyncId(id: String) {
+        if (id.isBlank() || id == dataSyncIdValue) return
+        dataSyncIdValue = id
+        prefs.edit { putString(KEY_DATASYNC_ID, id) }
     }
 
     // ─────────────────────── Account identity ───────────────────────
@@ -103,5 +123,6 @@ class YtAccountStore @Inject constructor(
         const val KEY_ACCOUNT_HANDLE = "account_handle"
         const val KEY_ACCOUNT_EMAIL = "account_email"
         const val KEY_ACCOUNT_AVATAR = "account_avatar"
+        const val KEY_DATASYNC_ID = "datasync_id"
     }
 }
