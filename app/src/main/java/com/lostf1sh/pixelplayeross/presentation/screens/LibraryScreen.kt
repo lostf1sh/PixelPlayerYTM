@@ -260,9 +260,15 @@ fun LibraryScreen(
                             onRetry = libraryViewModel::refresh,
                             onSignIn = { navController.navigateSafely(Screen.YtLogin.route) },
                             onOpen = { entry ->
-                                navController.navigateSafely(
-                                    Screen.YtPage.createRoute(entry.kind, entry.browseId)
-                                )
+                                // "Liked Music" (auto playlist LM) is the same data as the
+                                // Liked section — jump there instead of opening it as a page.
+                                if (entry.browseId.removePrefix("VL") == "LM") {
+                                    section = LibrarySection.LIKED.name
+                                } else {
+                                    navController.navigateSafely(
+                                        Screen.YtPage.createRoute(entry.kind, entry.browseId)
+                                    )
+                                }
                             },
                         )
                     }

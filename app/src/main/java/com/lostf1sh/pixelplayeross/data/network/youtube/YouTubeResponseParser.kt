@@ -167,7 +167,14 @@ internal object YouTubeResponseParser {
             val shelf = section.obj("musicShelfRenderer") ?: section.obj("musicPlaylistShelfRenderer")
             shelf.arr("contents")?.objects()?.forEach { row ->
                 val listRow = row.obj("musicResponsiveListItemRenderer")
-                if (listRow != null) add(listRowEntry(listRow)) else add(shelfEntry(row))
+                if (listRow != null) {
+                    // A row with a videoId is a song (liked songs page); otherwise it's a
+                    // link card (playlist/album/artist rows).
+                    val track = trackFromListRow(listRow)
+                    if (track != null) add(YtShelfEntry.Track(track)) else add(listRowEntry(listRow))
+                } else {
+                    add(shelfEntry(row))
+                }
             }
         }
         return entries.values.toList()
@@ -310,7 +317,10 @@ internal object YouTubeResponseParser {
             ?: return null
         val browseId = browse.str("browseId") ?: return null
         return YtShelfEntry.Page(
-            browseId = browseId,
+            // Library artist rows point at `MPLAUC…` — the artist's *library* page (just the
+            // saved songs). Strip the MPLA prefix to get the real `UC…` channel so the row
+            // opens the full artist page.
+            browseId = if (browseId.startsWith("MPLAUC")) browseId.removePrefix("MPLA") else browseId,
             kind = pageKind(browse),
             title = title,
             subtitle = flexColumnText(row, 1)?.runsText()?.ifBlank { null },
@@ -395,7 +405,8 @@ internal object YouTubeResponseParser {
                 .obj("browseEndpointContextMusicConfig").str("pageType")
         ) {
             "MUSIC_PAGE_TYPE_ALBUM" -> YtPageKind.ALBUM
-            "MUSIC_PAGE_TYPE_ARTIST", "MUSIC_PAGE_TYPE_USER_CHANNEL" -> YtPageKind.ARTIST
+            "MUSIC_PAGE_TYPE_ARTIST", "MUSIC_PAGE_TYPE_USER_CHANNEL",
+            "MUSIC_PAGE_TYPE_LIBRARY_ARTIST" -> YtPageKind.ARTIST
             "MUSIC_PAGE_TYPE_PODCAST_SHOW" -> YtPageKind.PODCAST
             else -> YtPageKind.PLAYLIST
         }
