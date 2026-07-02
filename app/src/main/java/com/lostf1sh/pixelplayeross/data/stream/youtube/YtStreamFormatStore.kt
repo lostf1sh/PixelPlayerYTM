@@ -28,14 +28,25 @@ class YtStreamFormatStore @Inject constructor(
     @YtStreamCache private val streamCache: SimpleCache,
 ) {
     private val prefs = context.getSharedPreferences("yt_stream_formats", Context.MODE_PRIVATE)
+    private val loudnessPrefs = context.getSharedPreferences("yt_stream_loudness", Context.MODE_PRIVATE)
 
     private val itags = ConcurrentHashMap<String, Int>().apply {
         prefs.all.forEach { (videoId, itag) -> (itag as? Int)?.let { put(videoId, it) } }
     }
 
+    private val loudness = ConcurrentHashMap<String, Float>().apply {
+        loudnessPrefs.all.forEach { (videoId, db) -> (db as? Float)?.let { put(videoId, it) } }
+    }
+
     fun itagFor(videoId: String): Int? = itags[videoId]
 
-    fun record(videoId: String, itag: Int) {
+    /** YTM's measured loudness (dB above reference) for a track, for volume normalization. */
+    fun loudnessDbFor(videoId: String): Float? = loudness[videoId]
+
+    fun record(videoId: String, itag: Int, loudnessDb: Float? = null) {
+        if (loudnessDb != null && loudness.put(videoId, loudnessDb) != loudnessDb) {
+            loudnessPrefs.edit { putFloat(videoId, loudnessDb) }
+        }
         val previous = itags.put(videoId, itag)
         if (previous == itag) return
         prefs.edit { putInt(videoId, itag) }

@@ -206,6 +206,9 @@ constructor(
         val EXTERNAL_LYRICS_ENABLED = booleanPreferencesKey("external_lyrics_enabled")
         val EXTERNAL_ARTIST_IMAGES_ENABLED = booleanPreferencesKey("external_artist_images_enabled")
 
+        // YouTube Music
+        val YTM_NORMALIZATION_ENABLED = booleanPreferencesKey("ytm_normalization_enabled")
+
         // Developer Options
         val ALBUM_ART_QUALITY = stringPreferencesKey("album_art_quality")
         val ALBUM_ART_CACHE_LIMIT_MB = intPreferencesKey("album_art_cache_limit_mb")
@@ -611,6 +614,18 @@ constructor(
             if (!enabled && preferences[PreferencesKeys.LYRICS_SOURCE_PREFERENCE] == LyricsSourcePreference.API_FIRST.name) {
                 preferences[PreferencesKeys.LYRICS_SOURCE_PREFERENCE] = LyricsSourcePreference.EMBEDDED_FIRST.name
             }
+        }
+    }
+
+    /** Level out YTM streams using YouTube's own per-track loudness measurement. Default on. */
+    val ytmNormalizationEnabledFlow: Flow<Boolean> =
+            dataStore.data.map { preferences ->
+                preferences[PreferencesKeys.YTM_NORMALIZATION_ENABLED] ?: true
+            }.distinctUntilChanged()
+
+    suspend fun setYtmNormalizationEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.YTM_NORMALIZATION_ENABLED] = enabled
         }
     }
 

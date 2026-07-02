@@ -158,6 +158,8 @@ class MusicService : MediaLibraryService() {
     @Inject
     lateinit var replayGainManager: com.lostf1sh.pixelplayeross.data.media.ReplayGainManager
     @Inject
+    lateinit var ytStreamFormatStore: com.lostf1sh.pixelplayeross.data.stream.youtube.YtStreamFormatStore
+    @Inject
     lateinit var listeningStatsTracker: ListeningStatsTracker
     @Inject
     @AppScope
@@ -166,6 +168,7 @@ class MusicService : MediaLibraryService() {
     private var replayGainEnabled = false
     private var userPlaybackSpeed = 1f
     private var replayGainUseAlbumGain = false
+    private var ytmNormalizationEnabled = true
     private var replayGainJob: Job? = null
     private var replayGainRequestToken = 0L
     private var userSelectedVolume = 1f
@@ -467,6 +470,12 @@ class MusicService : MediaLibraryService() {
             userPreferencesRepository.replayGainUseAlbumGainFlow.collect { useAlbum ->
                 replayGainUseAlbumGain = useAlbum
                 // Re-apply to current track when mode changes
+                applyReplayGain(mediaSession?.player?.currentMediaItem)
+            }
+        }
+        serviceScope.launch {
+            userPreferencesRepository.ytmNormalizationEnabledFlow.collect { enabled ->
+                ytmNormalizationEnabled = enabled
                 applyReplayGain(mediaSession?.player?.currentMediaItem)
             }
         }
@@ -1268,6 +1277,25 @@ class MusicService : MediaLibraryService() {
             return
         }
 
+        // YTM streams carry no file tags; YouTube's own loudness measurement (recorded by
+        // the stream resolver) stands in. Known synchronously, so no IO coroutine needed.
+        ytmNormalizedVolume(mediaItem)?.let { volume ->
+            if (engine.isTransitionRunning()) {
+                pendingReplayGainVolume = volume
+                engine.incomingTrackReplayGainVolume = volume
+            } else {
+                pendingReplayGainVolume = null
+                engine.incomingTrackReplayGainVolume = null
+                lastAppliedReplayGainVolume = volume
+                lastReplayGainMediaId = mediaItem.mediaId
+                setPlayerVolume(engine.masterPlayer, volume)
+            }
+            Timber.tag(TAG).d(
+                "ReplayGain: YTM loudness volume=%.2f for %s", volume, mediaItem.mediaMetadata.title
+            )
+            return
+        }
+
         if (!replayGainEnabled) {
             pendingReplayGainVolume = null
             if (!engine.isTransitionRunning()) {
@@ -1343,8 +1371,25 @@ class MusicService : MediaLibraryService() {
      * Returns the cached ReplayGain volume for a media item if already computed, or null.
      * Does NOT trigger an IO read — only reads from the in-memory cache.
      */
+    /**
+     * The normalized volume for a YTM stream, from YouTube's measured `loudnessDb`.
+     * Attenuation-only: boosting a quiet track past 1.0 would clip without a limiter.
+     * Null for non-YTM items, when the track hasn't been resolved yet (first-ever play
+     * applies from the next transition on), or when YTM normalization is disabled.
+     */
+    private fun ytmNormalizedVolume(mediaItem: MediaItem): Float? {
+        if (!ytmNormalizationEnabled) return null
+        val uri = mediaItem.localConfiguration?.uri ?: mediaItem.requestMetadata.mediaUri
+        if (uri?.scheme != "ytm") return null
+        val videoId = uri.host ?: return null
+        val loudnessDb = ytStreamFormatStore.loudnessDbFor(videoId) ?: return null
+        return replayGainManager.gainDbToVolume(-loudnessDb).coerceAtMost(1f)
+    }
+
     private fun getCachedReplayGainVolume(mediaItem: MediaItem?): Float? {
-        if (!replayGainEnabled || mediaItem == null) return null
+        if (mediaItem == null) return null
+        ytmNormalizedVolume(mediaItem)?.let { return it }
+        if (!replayGainEnabled) return null
         val filePath = mediaItem.mediaMetadata.extras
             ?.getString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH) ?: return null
         if (filePath.isBlank()) return null

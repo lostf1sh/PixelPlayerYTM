@@ -120,8 +120,9 @@ class YouTubeStreamResolver @Inject constructor(
         }
 
         val format = bestAudioFormat(response) ?: return null
-        // Pin the chosen encoding for the disk cache (evicts stale spans if it changed).
-        format.itag?.let { formatStore.record(videoId, it) }
+        // Pin the chosen encoding for the disk cache (evicts stale spans if it changed)
+        // and remember YTM's loudness measurement for volume normalization.
+        format.itag?.let { formatStore.record(videoId, it, format.loudnessDb?.toFloat()) }
         val url = newPipe.resolveStreamUrl(videoId, format, poToken?.streamingDataPoToken)
             ?: throw StreamResolutionException("could not descramble stream url")
 
