@@ -174,6 +174,7 @@ internal fun shouldDisableAudioOffloadOnEarlyBuffering(
 class DualPlayerEngine @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val youTubeStreamProxy: com.lostf1sh.pixelplayeross.data.stream.youtube.YouTubeStreamProxy,
+    private val ytPlaybackReporter: com.lostf1sh.pixelplayeross.data.stream.youtube.YtPlaybackReporter,
     @param:com.lostf1sh.pixelplayeross.data.stream.youtube.YtStreamCache private val ytStreamCache: SimpleCache
 ) {
     private companion object {
@@ -377,6 +378,7 @@ class DualPlayerEngine @Inject constructor(
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             lastMediaItemTransitionAtMs = SystemClock.elapsedRealtime()
             cancelAudioOffloadFallback()
+            reportYtTrackStarted(mediaItem)
             
             // If the transition was not automatic (e.g. user skip or playlist change),
             // immediately cancel any background crossfade logic to ensure responsiveness.
@@ -687,6 +689,13 @@ class DualPlayerEngine @Inject constructor(
     private fun isLikelyLocalMedia(mediaItem: MediaItem?): Boolean {
         val scheme = mediaItem?.localConfiguration?.uri?.scheme?.lowercase()
         return scheme == null || scheme in LOCAL_MEDIA_SCHEMES
+    }
+
+    /** YTM history ping: `ytm://<videoId>` items report a play on every transition. */
+    private fun reportYtTrackStarted(mediaItem: MediaItem?) {
+        val uri = mediaItem?.localConfiguration?.uri ?: return
+        if (uri.scheme != "ytm") return
+        uri.host?.takeIf { it.isNotBlank() }?.let { ytPlaybackReporter.onTrackStarted(it) }
     }
 
     private fun wakeModeFor(mediaItem: MediaItem?): Int {
@@ -1255,6 +1264,9 @@ class DualPlayerEngine @Inject constructor(
 
         playerA = incomingPlayer
         playerB = outgoingPlayer
+        // Crossfade transitions never hit the master listener's onMediaItemTransition
+        // (the incoming player changed items before it became master), so report here.
+        reportYtTrackStarted(playerA.currentMediaItem)
         activeWindowStartIndex = preparedWindowStartIndex
         activePlayerUsesWindowedQueue = preparedPlayerUsesWindowedQueue
         resetPreparedWindowState()

@@ -44,6 +44,7 @@ class YouTubeStreamResolver @Inject constructor(
     private val poTokenGenerator: PoTokenGenerator,
     private val formatStore: YtStreamFormatStore,
     private val userPreferencesRepository: UserPreferencesRepository,
+    private val playbackReporter: YtPlaybackReporter,
     private val json: Json,
 ) {
     private val cache = LinkedHashMap<String, ResolvedStream>()
@@ -121,6 +122,12 @@ class YouTubeStreamResolver @Inject constructor(
         val response = json.decodeFromJsonElement(PlayerResponse.serializer(), root)
         if (!response.isPlayable) {
             throw StreamResolutionException(response.playabilityStatus?.reason ?: "not playable")
+        }
+
+        // Hand the history-ping URL to the reporter; it fires only when the track
+        // actually starts playing (this resolve may be a neighbour pre-resolution).
+        response.playbackTracking?.videostatsPlaybackUrl?.baseUrl?.let {
+            playbackReporter.record(videoId, it)
         }
 
         val format = bestAudioFormat(response) ?: return null

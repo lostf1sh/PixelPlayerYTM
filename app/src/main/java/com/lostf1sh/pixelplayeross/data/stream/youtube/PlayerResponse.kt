@@ -10,6 +10,7 @@ import kotlinx.serialization.Serializable
 data class PlayerResponse(
     val playabilityStatus: PlayabilityStatus? = null,
     val streamingData: StreamingData? = null,
+    val playbackTracking: PlaybackTracking? = null,
 ) {
     val isPlayable: Boolean get() = playabilityStatus?.status == "OK"
 
@@ -18,6 +19,15 @@ data class PlayerResponse(
         val status: String? = null,
         val reason: String? = null,
     )
+
+    /** Stats ping endpoints; the playback one is what writes a play into YT history. */
+    @Serializable
+    data class PlaybackTracking(
+        val videostatsPlaybackUrl: TrackingUrl? = null,
+    ) {
+        @Serializable
+        data class TrackingUrl(val baseUrl: String? = null)
+    }
 
     @Serializable
     data class StreamingData(
