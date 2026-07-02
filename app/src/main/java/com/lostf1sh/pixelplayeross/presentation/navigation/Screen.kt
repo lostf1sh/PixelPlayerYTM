@@ -61,6 +61,9 @@ sealed class Screen(val route: String) {
     /** The synthetic "Local Songs" playlist — all on-device audio as one flat list. */
     object LocalSongs : Screen("local_songs")
 
+    /** Offline YTM downloads. */
+    object YtDownloads : Screen("yt_downloads")
+
     object About : Screen("about")
     object EasterEgg : Screen("easter_egg")
 

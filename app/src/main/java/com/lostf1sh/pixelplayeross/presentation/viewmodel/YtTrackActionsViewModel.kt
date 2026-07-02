@@ -3,7 +3,10 @@ package com.lostf1sh.pixelplayeross.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lostf1sh.pixelplayeross.data.model.YtShelfEntry
+import com.lostf1sh.pixelplayeross.data.model.YtTrack
 import com.lostf1sh.pixelplayeross.data.youtube.YouTubeRepository
+import com.lostf1sh.pixelplayeross.data.youtube.YtDownloadEntry
+import com.lostf1sh.pixelplayeross.data.youtube.YtDownloadManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,12 +15,14 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Backs the "Add to playlist" pane of the track options sheet: the signed-in user's
- * playlists to pick from, plus the add / create-and-add write actions.
+ * Backs the per-track actions of the options sheet that need their own data/IO:
+ * the "Add to playlist" pane (library playlists + the add / create-and-add writes)
+ * and offline downloads.
  */
 @HiltViewModel
-class YtPlaylistActionsViewModel @Inject constructor(
+class YtTrackActionsViewModel @Inject constructor(
     private val youTubeRepository: YouTubeRepository,
+    private val downloadManager: YtDownloadManager,
 ) : ViewModel() {
 
     val isSignedIn: StateFlow<Boolean> get() = youTubeRepository.isSignedIn
@@ -57,4 +62,19 @@ class YtPlaylistActionsViewModel @Inject constructor(
             onResult(ok)
         }
     }
+
+    // ─────────────────────────── Downloads ───────────────────────────
+
+    val downloads: StateFlow<Map<String, YtDownloadEntry>> = downloadManager.downloads
+
+    /** In-flight downloads: videoId → progress in 0..1. */
+    val downloadProgress: StateFlow<Map<String, Float>> = downloadManager.inProgress
+
+    fun download(track: YtTrack) = downloadManager.download(track)
+
+    fun removeDownload(videoId: String) = downloadManager.delete(videoId)
+
+    fun songOf(entry: YtDownloadEntry) = downloadManager.songFor(entry)
+
+    fun trackOf(entry: YtDownloadEntry) = downloadManager.trackFor(entry)
 }

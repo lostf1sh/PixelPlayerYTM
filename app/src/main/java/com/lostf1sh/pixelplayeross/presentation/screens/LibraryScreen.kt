@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -81,6 +82,7 @@ import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlaylistViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.YtLibraryViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.YtRadioViewModel
+import com.lostf1sh.pixelplayeross.presentation.viewmodel.YtTrackActionsViewModel
 import com.lostf1sh.pixelplayeross.utils.formatSongCount
 import kotlinx.coroutines.launch
 
@@ -144,6 +146,9 @@ fun LibraryScreen(
     var section by rememberSaveable { mutableStateOf(LibrarySection.PLAYLISTS.name) }
     val currentSection = LibrarySection.entries.first { it.name == section }
     var trackForOptions by remember { mutableStateOf<YtTrack?>(null) }
+
+    val trackActionsViewModel: YtTrackActionsViewModel = hiltViewModel()
+    val ytDownloads by trackActionsViewModel.downloads.collectAsStateWithLifecycle()
 
     val statusBarTopInset = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
     val navBarCompactMode by playerViewModel.navBarCompactMode.collectAsStateWithLifecycle()
@@ -228,6 +233,27 @@ fun LibraryScreen(
                                 },
                                 onClick = { navController.navigateSafely(Screen.LocalSongs.route) },
                             )
+                        }
+                        if (ytDownloads.isNotEmpty()) {
+                            item(key = "yt_downloads", contentType = "hero") {
+                                LibraryHeroCard(
+                                    title = "Downloads",
+                                    subtitle = formatSongCount(ytDownloads.size),
+                                    gradient = listOf(
+                                        colorScheme.secondaryContainer,
+                                        colorScheme.primaryContainer,
+                                    ),
+                                    contentColor = colorScheme.onSecondaryContainer,
+                                    icon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Download,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(30.dp),
+                                        )
+                                    },
+                                    onClick = { navController.navigateSafely(Screen.YtDownloads.route) },
+                                )
+                            }
                         }
                         if (playlistUiState.playlists.isNotEmpty()) {
                             item(key = "local_pl_header", contentType = "header") {

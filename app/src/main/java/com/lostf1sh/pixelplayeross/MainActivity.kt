@@ -604,7 +604,8 @@ class MainActivity : ComponentActivity() {
                 Screen.YtLogin.route,
                 Screen.YtPage.route,
                 Screen.YtMood.route,
-                Screen.LocalSongs.route
+                Screen.LocalSongs.route,
+                Screen.YtDownloads.route
             )
         }
         val shouldHideNavigationBar by remember(currentRoute, isSearchBarActive) {

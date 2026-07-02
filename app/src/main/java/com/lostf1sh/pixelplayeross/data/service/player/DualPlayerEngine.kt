@@ -175,6 +175,7 @@ class DualPlayerEngine @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val youTubeStreamProxy: com.lostf1sh.pixelplayeross.data.stream.youtube.YouTubeStreamProxy,
     private val ytPlaybackReporter: com.lostf1sh.pixelplayeross.data.stream.youtube.YtPlaybackReporter,
+    private val ytDownloadManager: com.lostf1sh.pixelplayeross.data.youtube.YtDownloadManager,
     @param:com.lostf1sh.pixelplayeross.data.stream.youtube.YtStreamCache private val ytStreamCache: SimpleCache
 ) {
     private companion object {
@@ -691,11 +692,20 @@ class DualPlayerEngine @Inject constructor(
         return scheme == null || scheme in LOCAL_MEDIA_SCHEMES
     }
 
-    /** YTM history ping: `ytm://<videoId>` items report a play on every transition. */
+    /** YTM history ping: YTM items report a play on every transition. */
     private fun reportYtTrackStarted(mediaItem: MediaItem?) {
         val uri = mediaItem?.localConfiguration?.uri ?: return
-        if (uri.scheme != "ytm") return
-        uri.host?.takeIf { it.isNotBlank() }?.let { ytPlaybackReporter.onTrackStarted(it) }
+        val videoId = when {
+            uri.scheme == "ytm" -> uri.host
+            // Items resolved before enqueue carry the loopback proxy form
+            // `http://127.0.0.1:<port>/ytm/<videoId>?token=…` instead of `ytm://`.
+            uri.pathSegments.firstOrNull() == "ytm" -> uri.lastPathSegment
+            // Offline downloads resolve to `file://…/ytm_downloads/<videoId>.<ext>`.
+            uri.scheme == "file" && uri.path?.contains("/ytm_downloads/") == true ->
+                uri.lastPathSegment?.substringBeforeLast('.')
+            else -> null
+        }
+        videoId?.takeIf { it.isNotBlank() }?.let { ytPlaybackReporter.onTrackStarted(it) }
     }
 
     private fun wakeModeFor(mediaItem: MediaItem?): Int {
@@ -946,6 +956,11 @@ class DualPlayerEngine @Inject constructor(
                 val uri = dataSpec.uri
                 val scheme = uri.scheme
                 if (scheme in CLOUD_PROXY_SCHEMES) {
+                    // Offline downloads short-circuit resolution entirely: the bytes are
+                    // already on disk, no proxy / network / PoToken involved.
+                    uri.host?.let(ytDownloadManager::localUriFor)?.let { local ->
+                        return dataSpec.buildUpon().setUri(local).build()
+                    }
                     val originalUri = uri.toString()
                     val resolved = resolvedUriCache.get(originalUri)
                         ?: resolveReadyCloudProxyUri(uri)?.also { proxyUri ->
@@ -1077,7 +1092,11 @@ class DualPlayerEngine @Inject constructor(
         resolvedUriCache.get(uriString)?.let { return@withContext it }
 
         val resolved: Uri? = when (uri.scheme) {
-            "ytm" -> resolveYouTubeUriAsync(uriString)
+            // Downloaded tracks play straight off disk — never memoized in the
+            // resolved-URI cache, so a deleted download falls back to streaming.
+            "ytm" -> uri.host?.let(ytDownloadManager::localUriFor)
+                ?.let { return@withContext it }
+                ?: resolveYouTubeUriAsync(uriString)
             else -> null
         }
 

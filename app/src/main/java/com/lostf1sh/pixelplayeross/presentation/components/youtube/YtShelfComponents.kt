@@ -53,7 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.lostf1sh.pixelplayeross.presentation.viewmodel.YtPlaylistActionsViewModel
+import com.lostf1sh.pixelplayeross.presentation.viewmodel.YtTrackActionsViewModel
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
@@ -496,7 +496,7 @@ fun YtTrackOptionsSheetContent(
     onGoToArtist: (() -> Unit)?,
     onDismiss: () -> Unit = {},
 ) {
-    val playlistActions: YtPlaylistActionsViewModel = hiltViewModel()
+    val playlistActions: YtTrackActionsViewModel = hiltViewModel()
     val isSignedIn by playlistActions.isSignedIn.collectAsStateWithLifecycle()
     var pickingPlaylist by rememberSaveable { mutableStateOf(false) }
 
@@ -544,22 +544,50 @@ fun YtTrackOptionsSheetContent(
             if (isSignedIn) {
                 YtSheetAction("Add to playlist") { pickingPlaylist = true }
             }
+            YtDownloadAction(
+                track = track,
+                viewModel = playlistActions,
+                onDismiss = onDismiss,
+            )
             onGoToAlbum?.let { YtSheetAction("Go to album", it) }
             onGoToArtist?.let { YtSheetAction("Go to artist", it) }
         }
     }
 }
 
+/** Download / progress / remove-download row, driven by the download manager's flows. */
+@Composable
+private fun YtDownloadAction(
+    track: YtTrack,
+    viewModel: YtTrackActionsViewModel,
+    onDismiss: () -> Unit,
+) {
+    val downloads by viewModel.downloads.collectAsStateWithLifecycle()
+    val progress by viewModel.downloadProgress.collectAsStateWithLifecycle()
+    val inFlight = progress[track.videoId]
+    when {
+        inFlight != null -> YtSheetAction("Downloading… ${(inFlight * 100).toInt()}%") {}
+        track.videoId in downloads -> YtSheetAction("Remove download") {
+            viewModel.removeDownload(track.videoId)
+            onDismiss()
+        }
+        else -> YtSheetAction("Download") {
+            viewModel.download(track)
+            onDismiss()
+        }
+    }
+}
+
 /**
  * Second pane of the options sheet: pick one of the account's playlists (or create a
- * new one) to add [track] to. Writes go through [YtPlaylistActionsViewModel]; the result
+ * new one) to add [track] to. Writes go through [YtTrackActionsViewModel]; the result
  * lands as a toast after [onDone] has closed the sheet.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun YtPlaylistPickerPane(
     track: YtTrack,
-    viewModel: YtPlaylistActionsViewModel,
+    viewModel: YtTrackActionsViewModel,
     onDone: () -> Unit,
 ) {
     val context = LocalContext.current.applicationContext
