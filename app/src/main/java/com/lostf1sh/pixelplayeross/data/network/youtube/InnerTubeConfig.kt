@@ -22,6 +22,8 @@ enum class InnerTubeClientId(
     val androidSdkVersion: Int?,
     /** Whether `player` requests must echo the base.js signatureTimestamp (web clients do). */
     val useSignatureTimestamp: Boolean = false,
+    /** Whether this client takes a BotGuard PoToken (web clients: sent in body + on stream URL). */
+    val useWebPoTokens: Boolean = false,
 ) {
     WEB_REMIX(
         clientName = "WEB_REMIX",
@@ -33,6 +35,22 @@ enum class InnerTubeClientId(
         referer = "https://music.youtube.com/",
         androidSdkVersion = null,
         useSignatureTimestamp = true,
+        useWebPoTokens = true,
+    ),
+    /**
+     * The iPhone app client. Uniquely (as of 2026-07) it answers `player` for Music tracks
+     * anonymously with `status: OK` and **plain, directly-playable** audio URLs — no
+     * signatureCipher, no PoToken, no base.js descrambling. This is the stream-resolution
+     * path; keep [version] fresh (mirror the latest App Store build) if it starts 400ing.
+     */
+    IOS(
+        clientName = "IOS",
+        version = "20.10.4",
+        apiKey = "AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc",
+        headerId = "5",
+        userAgent = "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X)",
+        referer = null,
+        androidSdkVersion = null,
     ),
     ANDROID_MUSIC(
         clientName = "ANDROID_MUSIC",

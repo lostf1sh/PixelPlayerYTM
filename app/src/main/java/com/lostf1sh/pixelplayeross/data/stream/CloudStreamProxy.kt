@@ -81,6 +81,12 @@ abstract class CloudStreamProxy<K : Any>(
     private val streamingClient: OkHttpClient by lazy {
         okHttpClient.newBuilder()
             .readTimeout(STREAM_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            // Force HTTP/1.1 for upstream media fetches. YouTube's googlevideo CDN rejects
+            // (403) the HTTP/2 request OkHttp negotiates when the stream URL is minted for a
+            // non-web client (`c=IOS`), even with the matching User-Agent — the real iOS app
+            // and plain curl both speak HTTP/1.1. Downgrading here is what actually unblocks
+            // playback; other cloud proxies are unaffected by the protocol choice.
+            .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
             .build()
     }
 
@@ -189,7 +195,15 @@ abstract class CloudStreamProxy<K : Any>(
      * headers instead of baking them into the cached stream URL (where they'd end up in
      * URL caches and server access logs).
      */
-    protected open fun upstreamHeaders(): Map<String, String> = emptyMap()
+    protected open fun upstreamHeaders(streamUrl: String): Map<String, String> = emptyMap()
+
+    /**
+     * The `Range` header to send upstream, given the (validated) client range — null means
+     * "send none". Default is passthrough. Subclasses override when the origin demands a
+     * specific range shape (YouTube's googlevideo 403s an open-ended `bytes=N-` or a range
+     * with no upper bound; it must be closed).
+     */
+    protected open fun resolveUpstreamRange(streamUrl: String, clientRange: String?): String? = clientRange
 
     // ─── Internal ──────────────────────────────────────────────────────
 
@@ -267,10 +281,10 @@ abstract class CloudStreamProxy<K : Any>(
                         }
 
                         val requestBuilder = Request.Builder().url(streamUrl)
-                        rangeValidation.normalizedHeader?.let {
+                        resolveUpstreamRange(streamUrl, rangeValidation.normalizedHeader)?.let {
                             requestBuilder.header("Range", it)
                         }
-                        upstreamHeaders().forEach { (name, value) ->
+                        upstreamHeaders(streamUrl).forEach { (name, value) ->
                             requestBuilder.header(name, value)
                         }
 

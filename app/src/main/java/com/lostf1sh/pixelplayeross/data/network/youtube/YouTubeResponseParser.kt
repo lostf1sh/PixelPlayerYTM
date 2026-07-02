@@ -32,27 +32,77 @@ internal object YouTubeResponseParser {
         val entries = LinkedHashMap<String, YtShelfEntry>()
         var continuation: String? = null
 
-        val shelves: List<JsonObject> =
-            root.obj("continuationContents").obj("musicShelfContinuation")?.let(::listOf)
-                ?: root.obj("contents").obj("tabbedSearchResultsRenderer")
-                    .arr("tabs").objAt(0).obj("tabRenderer").obj("content")
-                    .obj("sectionListRenderer").arr("contents")
-                    .objects()
-                    .mapNotNull { it.obj("musicShelfRenderer") }
-                    .toList()
+        // Continuation responses are a bare shelf of more rows.
+        root.obj("continuationContents").obj("musicShelfContinuation")?.let { shelf ->
+            collectSearchRows(shelf.arr("contents"), entries)
+            return YtSearchPage(entries.values.toList(), shelfContinuation(shelf))
+        }
 
-        for (shelf in shelves) {
-            if (continuation == null) continuation = shelfContinuation(shelf)
-            shelf.arr("contents")?.objects()?.forEach { row ->
-                val listRow = row.obj("musicResponsiveListItemRenderer") ?: return@forEach
-                // A result row is either a playable track or a card linking to a page
-                // (album/artist/playlist searches return the latter).
-                val entry = trackFromListRow(listRow)?.let { YtShelfEntry.Track(it) }
-                    ?: listRowEntry(listRow)
-                entry?.let { entries.putIfAbsent(it.key, it) }
+        val sectionList = root.obj("contents").obj("tabbedSearchResultsRenderer")
+            .arr("tabs").objAt(0).obj("tabRenderer").obj("content")
+            .obj("sectionListRenderer")
+
+        sectionList.arr("contents")?.objects()?.forEach { section ->
+            // Filtered searches (Songs/Albums/…) return one musicShelfRenderer per type.
+            section.obj("musicShelfRenderer")?.let { shelf ->
+                if (continuation == null) continuation = shelfContinuation(shelf)
+                collectSearchRows(shelf.arr("contents"), entries)
+            }
+            // "All" searches lead with a top-result card…
+            section.obj("musicCardShelfRenderer")?.let { card ->
+                topResultEntry(card)?.let { entries.putIfAbsent(it.key, it) }
+                collectSearchRows(card.arr("contents"), entries)
+            }
+            // …then wrap each further result row in its own itemSectionRenderer.
+            section.obj("itemSectionRenderer")?.let { item ->
+                collectSearchRows(item.arr("contents"), entries)
             }
         }
+        if (continuation == null) {
+            continuation = sectionList.arr("continuations").objAt(0)
+                .obj("nextContinuationData").str("continuation")
+        }
         return YtSearchPage(entries.values.toList(), continuation)
+    }
+
+    /** Pull every `musicResponsiveListItemRenderer` row (track or page card) into [out]. */
+    private fun collectSearchRows(rows: JsonArray?, out: LinkedHashMap<String, YtShelfEntry>) {
+        rows?.objects()?.forEach { row ->
+            val listRow = row.obj("musicResponsiveListItemRenderer") ?: return@forEach
+            val entry = trackFromListRow(listRow)?.let { YtShelfEntry.Track(it) }
+                ?: listRowEntry(listRow)
+            entry?.let { out.putIfAbsent(it.key, it) }
+        }
+    }
+
+    /** The headline "top result" card of an "All" search → track or page entry. */
+    private fun topResultEntry(card: JsonObject): YtShelfEntry? {
+        val titleText = card.obj("title")
+        val title = titleText?.runsText()?.ifBlank { null } ?: return null
+        val subtitle = card.obj("subtitle")?.runsText()?.ifBlank { null }
+        val thumb = thumbnailUrl(card.obj("thumbnail"))
+        val nav = titleText.arr("runs").objAt(0).obj("navigationEndpoint")
+            ?: card.obj("onTap")
+
+        nav.obj("watchEndpoint").str("videoId")?.let { videoId ->
+            return YtShelfEntry.Track(
+                YtTrack(
+                    videoId = videoId,
+                    title = title,
+                    artists = listOfNotNull(subtitle?.let { YtArtistLink(it.substringBefore(" • ").trim()) }),
+                    thumbnailUrl = thumb,
+                )
+            )
+        }
+        val browse = nav.obj("browseEndpoint") ?: return null
+        val browseId = browse.str("browseId") ?: return null
+        return YtShelfEntry.Page(
+            browseId = browseId,
+            kind = pageKind(browse),
+            title = title,
+            subtitle = subtitle,
+            thumbnailUrl = thumb,
+        )
     }
 
     fun searchSuggestions(root: JsonObject): List<String> =
@@ -279,29 +329,62 @@ internal object YouTubeResponseParser {
     // ───────────────────────── Page plumbing ─────────────────────────
 
     /** Sections of a browse page, for both first responses and continuations. */
-    private fun browseSections(root: JsonObject): List<JsonObject> =
-        (root.obj("continuationContents").obj("sectionListContinuation").arr("contents")
-            ?: root.obj("contents").obj("singleColumnBrowseResultsRenderer")
-                .arr("tabs").objAt(0).obj("tabRenderer").obj("content")
-                .obj("sectionListRenderer").arr("contents"))
-            ?.objects()?.toList().orEmpty()
+    private fun browseSections(root: JsonObject): List<JsonObject> {
+        root.obj("continuationContents").obj("sectionListContinuation").arr("contents")
+            ?.let { return it.objects().toList() }
 
-    private fun sectionListContinuation(root: JsonObject): String? =
-        (root.obj("continuationContents").obj("sectionListContinuation")
+        root.obj("contents").obj("singleColumnBrowseResultsRenderer")
+            .arr("tabs").objAt(0).obj("tabRenderer").obj("content")
+            .obj("sectionListRenderer").arr("contents")
+            ?.let { return it.objects().toList() }
+
+        // Playlists/albums now return a two-column layout: the secondary column holds the
+        // track list, the primary column the header and any related-content carousels.
+        // Tracks come first so the header section never masks them.
+        root.obj("contents").obj("twoColumnBrowseResultsRenderer")?.let { two ->
+            val secondary = two.obj("secondaryContents").obj("sectionListRenderer")
+                .arr("contents")?.objects().orEmpty()
+            val primary = two.arr("tabs").objAt(0).obj("tabRenderer").obj("content")
+                .obj("sectionListRenderer").arr("contents")?.objects().orEmpty()
+            return (secondary + primary).toList()
+        }
+        return emptyList()
+    }
+
+    private fun sectionListContinuation(root: JsonObject): String? {
+        val sectionList = root.obj("continuationContents").obj("sectionListContinuation")
             ?: root.obj("contents").obj("singleColumnBrowseResultsRenderer")
                 .arr("tabs").objAt(0).obj("tabRenderer").obj("content")
-                .obj("sectionListRenderer"))
-            .arr("continuations").objAt(0).obj("nextContinuationData").str("continuation")
+                .obj("sectionListRenderer")
+            ?: root.obj("contents").obj("twoColumnBrowseResultsRenderer")
+                .obj("secondaryContents").obj("sectionListRenderer")
+        return sectionList.arr("continuations").objAt(0)
+            .obj("nextContinuationData").str("continuation")
+    }
 
     private fun shelfContinuation(shelf: JsonObject): String? =
         shelf.arr("continuations").objAt(0).obj("nextContinuationData").str("continuation")
 
     private fun pageHeader(root: JsonObject): JsonObject? {
-        val header = root.obj("header") ?: return null
-        return header.obj("musicDetailHeaderRenderer")
-            ?: header.obj("musicImmersiveHeaderRenderer")
-            ?: header.obj("musicResponsiveHeaderRenderer")
+        // Single-column pages expose the header at the top level.
+        root.obj("header")?.let { headerRenderer(it)?.let { r -> return r } }
+
+        // Two-column pages nest it in the primary tab's first section, optionally wrapped
+        // in an editable-playlist container.
+        root.obj("contents").obj("twoColumnBrowseResultsRenderer")
+            .arr("tabs").objAt(0).obj("tabRenderer").obj("content")
+            .obj("sectionListRenderer").arr("contents")?.objects()?.forEach { section ->
+                val container = section.obj("musicEditablePlaylistDetailHeaderRenderer")
+                    ?.obj("header") ?: section
+                headerRenderer(container)?.let { return it }
+            }
+        return null
     }
+
+    private fun headerRenderer(container: JsonObject?): JsonObject? =
+        container.obj("musicDetailHeaderRenderer")
+            ?: container.obj("musicImmersiveHeaderRenderer")
+            ?: container.obj("musicResponsiveHeaderRenderer")
 
     private fun headerThumbnail(header: JsonObject?): String? =
         thumbnailUrl(header.obj("thumbnail").obj("croppedSquareThumbnailRenderer") ?: header.obj("thumbnail"))

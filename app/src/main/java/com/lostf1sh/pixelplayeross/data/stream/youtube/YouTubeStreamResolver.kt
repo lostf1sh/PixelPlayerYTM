@@ -2,7 +2,9 @@ package com.lostf1sh.pixelplayeross.data.stream.youtube
 
 import com.lostf1sh.pixelplayeross.data.network.youtube.InnerTubeClientId
 import com.lostf1sh.pixelplayeross.data.network.youtube.InnerTubeService
+import com.lostf1sh.pixelplayeross.data.network.youtube.YtVisitorStore
 import com.lostf1sh.pixelplayeross.data.network.youtube.auth.YtAccountStore
+import com.lostf1sh.pixelplayeross.data.stream.youtube.potoken.PoTokenGenerator
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -35,6 +37,8 @@ class YouTubeStreamResolver @Inject constructor(
     private val innerTube: InnerTubeService,
     private val newPipe: NewPipeStreamHelper,
     private val accountStore: YtAccountStore,
+    private val visitorStore: YtVisitorStore,
+    private val poTokenGenerator: PoTokenGenerator,
     private val json: Json,
 ) {
     private val cache = LinkedHashMap<String, ResolvedStream>()
@@ -66,11 +70,21 @@ class YouTubeStreamResolver @Inject constructor(
     }
 
     private suspend fun resolveWith(videoId: String, client: InnerTubeClientId): ResolvedStream? {
-        // WEB_REMIX (the signed-in path that actually returns music streams) hands back
-        // signatureCipher formats keyed to base.js; echo its signatureTimestamp so the
-        // formats match the descrambler NewPipe will run.
+        // WEB_REMIX hands back signatureCipher formats keyed to base.js; echo its
+        // signatureTimestamp so the formats match the descrambler NewPipe will run.
         val signatureTimestamp =
             if (client.useSignatureTimestamp) newPipe.signatureTimestamp(videoId) else null
+
+        // A BotGuard PoToken bound to the current visitor session. The player-request half
+        // goes in the request body; the streaming half is appended to the stream URL. Without
+        // it, googlevideo `svpuc`-throttles the stream to ~1 MB and playback skips. Best-effort:
+        // null (no WebView / timeout) just yields the throttled stream rather than failing.
+        val sessionId = visitorStore.current
+        val poToken = if (client.useWebPoTokens && sessionId != null) {
+            poTokenGenerator.getWebClientPoToken(videoId, sessionId)
+        } else {
+            null
+        }
 
         val root = innerTube.call("player", client) {
             put("videoId", videoId)
@@ -83,6 +97,11 @@ class YouTubeStreamResolver @Inject constructor(
                     }
                 }
             }
+            if (poToken != null) {
+                putJsonObject("serviceIntegrityDimensions") {
+                    put("poToken", poToken.playerRequestPoToken)
+                }
+            }
         }
         val response = json.decodeFromJsonElement(PlayerResponse.serializer(), root)
         if (!response.isPlayable) {
@@ -90,7 +109,7 @@ class YouTubeStreamResolver @Inject constructor(
         }
 
         val format = bestAudioFormat(response) ?: return null
-        val url = newPipe.resolveStreamUrl(videoId, format)
+        val url = newPipe.resolveStreamUrl(videoId, format, poToken?.streamingDataPoToken)
             ?: throw StreamResolutionException("could not descramble stream url")
 
         val expiresInSeconds = response.streamingData?.expiresInSeconds?.toLongOrNull() ?: 21_600L
@@ -120,9 +139,9 @@ class YouTubeStreamResolver @Inject constructor(
     private companion object {
         const val TAG = "YtStreamResolver"
         const val CACHE_LIMIT = 60
-        // WEB_REMIX is the only client that returns music streams for a signed-in user
-        // (the app/TV clients now demand attestation/PoToken and answer LOGIN_REQUIRED).
-        // Its formats are ciphered, which NewPipe descrambles.
+        // WEB_REMIX + BotGuard PoToken is the reliable path: it returns full-quality music
+        // streams whose `svpuc` throttle the pot lifts. (IOS returns plain URLs but has no
+        // pot, so googlevideo caps it at ~1 MB — unusable for playback.)
         val CLIENT_ORDER = listOf(InnerTubeClientId.WEB_REMIX)
     }
 }

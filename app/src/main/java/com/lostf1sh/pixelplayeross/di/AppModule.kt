@@ -338,13 +338,21 @@ object AppModule {
             .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
             .writeTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
-            // Add User-Agent header (required by some APIs)
+            // Default User-Agent for callers that don't set their own. Crucially this must
+            // NOT override a UA a caller already picked: InnerTube impersonates specific
+            // clients (iOS, WEB_REMIX) whose UA must match the clientName, or YouTube's bot
+            // check rejects the player call ("Sign in to confirm you're not a bot").
             .addInterceptor { chain ->
                 val originalRequest = chain.request()
-                val requestWithUserAgent = originalRequest.newBuilder()
-                    .header("User-Agent", "PixelPlayerYTM/1.0 (Android; Music Player)")
-                    .build()
-                chain.proceed(requestWithUserAgent)
+                if (originalRequest.header("User-Agent") != null) {
+                    chain.proceed(originalRequest)
+                } else {
+                    chain.proceed(
+                        originalRequest.newBuilder()
+                            .header("User-Agent", "PixelPlayerYTM/1.0 (Android; Music Player)")
+                            .build()
+                    )
+                }
             }
             .addInterceptor(loggingInterceptor)
             .build()

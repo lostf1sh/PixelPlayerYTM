@@ -24,6 +24,9 @@ dependencyResolutionManagement {
                 includeGroup("com.github.philburk")
                 includeGroup("com.github.racra")
                 includeGroup("com.github.TeamNewPipe")
+                // Regex, not exact: the fork is multi-module, so its transitive artifacts
+                // live under the sub-group com.github.MetrolistGroup.MetrolistExtractor.
+                includeGroupByRegex("com\\.github\\.MetrolistGroup.*")
             }
         }
     }

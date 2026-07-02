@@ -53,6 +53,12 @@ class PixelPlayerApplication : Application(), ImageLoaderFactory, Configuration.
     @Inject
     lateinit var userPreferencesRepository: dagger.Lazy<UserPreferencesRepository>
 
+    @Inject
+    lateinit var poTokenGenerator: dagger.Lazy<com.lostf1sh.pixelplayeross.data.stream.youtube.potoken.PoTokenGenerator>
+
+    @Inject
+    lateinit var visitorStore: dagger.Lazy<com.lostf1sh.pixelplayeross.data.network.youtube.YtVisitorStore>
+
     private val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // ADD THE COMPANION OBJECT
@@ -103,6 +109,13 @@ class PixelPlayerApplication : Application(), ImageLoaderFactory, Configuration.
                 AlbumArtCacheManager.configuredCacheLimitMb = savedLimit.toLong()
             }
         }
+
+        // Boot the BotGuard PoToken WebView ahead of the first play so it doesn't cold-start
+        // mid-tap. Needs the persisted visitor session; a first-ever launch (none yet) just
+        // pays the cold start on the first track.
+        startupScope.launch {
+            visitorStore.get().current?.let { poTokenGenerator.get().preWarm(it) }
+        }
     }
 
     override fun newImageLoader(): ImageLoader {
@@ -143,6 +156,12 @@ class PixelPlayerApplication : Application(), ImageLoaderFactory, Configuration.
             level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE
         ) {
             imageLoader.get().memoryCache?.clear()
+        }
+
+        // The PoToken WebView is ~50 MB; drop it once the UI is hidden. Already-resolved
+        // stream URLs are cached, so in-progress playback is unaffected; it re-warms on next use.
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            startupScope.launch { poTokenGenerator.get().onAppBackgrounded() }
         }
     }
 

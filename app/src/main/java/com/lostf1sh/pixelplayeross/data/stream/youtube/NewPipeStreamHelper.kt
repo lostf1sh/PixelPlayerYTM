@@ -6,6 +6,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.schabi.newpipe.extractor.NewPipe
+import org.schabi.newpipe.extractor.downloader.CancellableCall
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
@@ -50,18 +51,18 @@ class NewPipeStreamHelper @Inject constructor(
 
     /**
      * Turn one streaming [format] into a directly playable URL: descramble the
-     * `signatureCipher` (if any) and always run the `n` throttling param through base.js.
+     * `signatureCipher` (WEB_REMIX) if present, run the `n` throttling param through
+     * base.js, and finally append the streaming-data [poToken] as `&pot=` so googlevideo
+     * serves the full track instead of `svpuc`-throttling it to ~1 MB.
      */
     suspend fun resolveStreamUrl(
         videoId: String,
         format: PlayerResponse.StreamingData.Format,
+        poToken: String? = null,
     ): String? = withContext(Dispatchers.IO) {
         ensureInitialized()
         runCatching {
-            val signed = format.url?.let { plain ->
-                // Plain (non-ciphered) URLs still carry an obfuscated n param.
-                deobfuscateNParam(videoId, plain)
-            } ?: run {
+            val ciphered = format.url ?: run {
                 val cipher = format.signatureCipher ?: format.cipher
                     ?: error("format has neither url nor signatureCipher")
                 val params = parseQuery(cipher)
@@ -69,9 +70,11 @@ class NewPipeStreamHelper @Inject constructor(
                 val sigParam = params["sp"] ?: "signature"
                 val baseUrl = params["url"] ?: error("signatureCipher missing 'url'")
                 val solved = YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, scrambled)
-                deobfuscateNParam(videoId, appendParam(baseUrl, sigParam, solved))
+                appendParam(baseUrl, sigParam, solved)
             }
-            signed
+            var url = deobfuscateNParam(videoId, ciphered)
+            if (!poToken.isNullOrBlank()) url = appendParam(url, "pot", poToken)
+            url
         }.onFailure {
             Timber.tag(TAG).w(it, "resolveStreamUrl failed for %s", videoId)
         }.getOrNull()
@@ -113,14 +116,30 @@ class NewPipeStreamHelper @Inject constructor(
                 if (response.code == 429) {
                     throw ReCaptchaException("reCaptcha Challenge requested", request.url())
                 }
+                val bodyString = response.body?.string()
                 return Response(
                     response.code,
                     response.message,
                     response.headers.toMultimap(),
-                    response.body?.string(),
+                    bodyString,
+                    bodyString?.toByteArray(),
                     response.request.url.toString(),
                 )
             }
+        }
+
+        /** The fork requires this; we only ever call [execute], so run it inline. */
+        override fun executeAsync(
+            request: Request,
+            callback: Downloader.AsyncCallback,
+        ): CancellableCall {
+            val okCall = client.newCall(okhttp3.Request.Builder().url(request.url()).build())
+            try {
+                callback.onSuccess(execute(request))
+            } catch (e: Exception) {
+                callback.onError(e)
+            }
+            return CancellableCall(okCall)
         }
     }
 

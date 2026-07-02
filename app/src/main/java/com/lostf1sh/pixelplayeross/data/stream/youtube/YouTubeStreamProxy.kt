@@ -1,6 +1,7 @@
 package com.lostf1sh.pixelplayeross.data.stream.youtube
 
 import android.net.Uri
+import com.lostf1sh.pixelplayeross.data.network.youtube.InnerTubeClientId
 import com.lostf1sh.pixelplayeross.data.stream.CloudStreamProxy
 import com.lostf1sh.pixelplayeross.data.stream.CloudStreamSecurity
 import okhttp3.OkHttpClient
@@ -34,7 +35,59 @@ class YouTubeStreamProxy @Inject constructor(
     override val uriScheme: String = "ytm"
     override val routePrefix: String = "/ytm"
 
+    /**
+     * googlevideo stream URLs are minted for a specific InnerTube client (`c`/`cver`).
+     * The media byte request must look like that same client or YouTube returns 403,
+     * which ExoPlayer interprets as an item failure and skips to the next track.
+     */
+    override fun upstreamHeaders(streamUrl: String): Map<String, String> {
+        val uri = Uri.parse(streamUrl)
+        val clientName = uri.getQueryParameter("c").orEmpty().uppercase()
+        val client = InnerTubeClientId.entries.firstOrNull { it.clientName == clientName }
+            ?: InnerTubeClientId.IOS
+
+        return buildMap {
+            put("User-Agent", client.userAgent)
+            client.referer?.let { referer ->
+                put("Referer", referer)
+                put("Origin", referer.trimEnd('/'))
+            }
+        }
+    }
+
+    /**
+     * iOS googlevideo `svpuc` streams reject an open-ended `bytes=N-` range (and a full
+     * GET). Bound only those requests to the object's last byte via `clen`. Web/TV
+     * fallback URLs may carry different authorization semantics, so leave their Range
+     * header as ExoPlayer sent it.
+     */
+    override fun resolveUpstreamRange(streamUrl: String, clientRange: String?): String? {
+        if (!requiresClosedRange(streamUrl)) return clientRange
+
+        val match = RANGE.find(clientRange ?: "bytes=0-")
+        val start = match?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+        val explicitEnd = match?.groupValues?.getOrNull(2)?.toLongOrNull()
+        val end = explicitEnd
+            ?: Uri.parse(streamUrl).getQueryParameter("clen")?.toLongOrNull()?.let { it - 1 }
+            ?: (start + FALLBACK_SPAN_BYTES - 1)
+        return "bytes=$start-$end"
+    }
+
+    private fun requiresClosedRange(streamUrl: String): Boolean {
+        val uri = Uri.parse(streamUrl)
+        val clientName = uri.getQueryParameter("c").orEmpty().uppercase()
+        val hasSvpuc = uri.getQueryParameter("svpuc") != null
+        return hasSvpuc || clientName == InnerTubeClientId.IOS.clientName
+    }
+
     override fun parseRouteParam(value: String): String? = value.takeIf { it.isNotBlank() }
+
+    private companion object {
+        val RANGE = Regex("""bytes=(\d+)-(\d*)""")
+
+        /** Only used if a URL somehow lacks `clen`; ample for one audio track. */
+        const val FALLBACK_SPAN_BYTES = 16L * 1024 * 1024
+    }
 
     override fun validateId(id: String): Boolean = CloudStreamSecurity.validateYouTubeVideoId(id)
 
