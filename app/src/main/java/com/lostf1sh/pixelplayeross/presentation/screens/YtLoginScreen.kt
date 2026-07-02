@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -115,6 +117,15 @@ private fun LoginWebView(
                 settings.userAgentString =
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
                         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                // Android auto-injects `X-Requested-With: <package>` on every request, which
+                // is Google's primary "embedded WebView" tell behind the "browser may not be
+                // secure" block. An empty allow-list sends it to no origin, suppressing it.
+                if (WebViewFeature.isFeatureSupported(
+                        WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST
+                    )
+                ) {
+                    WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
+                }
 
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
