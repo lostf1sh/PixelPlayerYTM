@@ -206,3 +206,23 @@
     public static int d(...);
     public static int i(...);
 }
+
+# ── YTM streaming stack ──────────────────────────────────────────────────────
+# The MetrolistExtractor fork (org.schabi.newpipe API) walks its own classes
+# reflectively for service/extractor lookup and JS-based signature deciphering;
+# R8 renaming breaks stream resolution at runtime with no compile-time signal.
+-keep class org.schabi.newpipe.extractor.** { *; }
+-dontwarn org.schabi.newpipe.extractor.**
+
+# Rhino (bundled by the extractor for base.js evaluation) relies on reflection.
+-keep class org.mozilla.javascript.** { *; }
+-dontwarn org.mozilla.javascript.**
+
+# Duktape's Kotlin/JNI bridge maps native callbacks by method name.
+-keep class com.squareup.duktape.** { *; }
+
+# The BotGuard PoToken WebView bridge is invoked from JS by method name.
+-keepclassmembers class com.lostf1sh.pixelplayeross.data.stream.youtube.potoken.** {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-keep class com.lostf1sh.pixelplayeross.data.stream.youtube.potoken.PoTokenWebView { *; }
