@@ -155,10 +155,16 @@ class YouTubeRepository @Inject constructor(
 
     suspend fun libraryArtists(): List<YtShelfEntry.Page> = libraryPages(YtBrowseIds.LIBRARY_ARTISTS)
 
-    suspend fun likedSongs(): List<YtTrack> =
-        YouTubeResponseParser.libraryEntries(
+    /** First page of liked songs plus the continuation token for [likedSongsMore]. */
+    suspend fun likedSongs(): Pair<List<YtTrack>, String?> =
+        YouTubeResponseParser.likedSongsPage(
             innerTube.call("browse") { put("browseId", YtBrowseIds.LIBRARY_SONGS) }
-        ).filterIsInstance<YtShelfEntry.Track>().map { it.track }
+        )
+
+    suspend fun likedSongsMore(continuation: String): Pair<List<YtTrack>, String?> =
+        YouTubeResponseParser.likedSongsPage(
+            innerTube.call("browse") { put("continuation", continuation) }
+        )
 
     private suspend fun libraryPages(browseId: String): List<YtShelfEntry.Page> =
         YouTubeResponseParser.libraryEntries(

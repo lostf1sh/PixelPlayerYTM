@@ -180,6 +180,24 @@ internal object YouTubeResponseParser {
         return entries.values.toList()
     }
 
+    /**
+     * A liked-songs page (first response or a `musicShelfContinuation`): its tracks plus
+     * the shelf continuation token for the next page (~50 rows each), null when exhausted.
+     */
+    fun likedSongsPage(root: JsonObject): Pair<List<YtTrack>, String?> {
+        root.obj("continuationContents").obj("musicShelfContinuation")?.let { shelf ->
+            return shelfTracks(shelf) to shelfContinuation(shelf)
+        }
+        val shelf = browseSections(root).firstNotNullOfOrNull { it.obj("musicShelfRenderer") }
+            ?: return emptyList<YtTrack>() to null
+        return shelfTracks(shelf) to shelfContinuation(shelf)
+    }
+
+    private fun shelfTracks(shelf: JsonObject): List<YtTrack> =
+        shelf.arr("contents").objects()
+            .mapNotNull { it.obj("musicResponsiveListItemRenderer")?.let(::trackFromListRow) }
+            .toList()
+
     // ───────────────────────── Radio / next ─────────────────────────
 
     fun radioPage(root: JsonObject): YtRadioPage {

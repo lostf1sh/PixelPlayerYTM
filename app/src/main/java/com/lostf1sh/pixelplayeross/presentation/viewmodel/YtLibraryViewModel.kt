@@ -83,10 +83,36 @@ class YtLibraryViewModel @Inject constructor(
                         playlists = playlists.await().getOrDefault(it.playlists),
                         albums = albums.await().getOrDefault(it.albums),
                         artists = artists.await().getOrDefault(it.artists),
-                        likedTracks = liked.await().getOrDefault(it.likedTracks),
+                        likedTracks = liked.await().getOrNull()?.first ?: it.likedTracks,
                         isLoading = false,
                         error = if (allFailed) "Couldn't load your library" else null,
                     )
+                }
+
+                // Page in the rest of the liked songs (~50 per page), updating the list as
+                // each page lands so the tab fills live instead of blocking the refresh.
+                var continuation = liked.await().getOrNull()?.second
+                var pagesFetched = 0
+                while (continuation != null && pagesFetched < MAX_LIKED_PAGES) {
+                    val page = runCatching { repository.likedSongsMore(continuation!!) }
+                        .onFailure { e ->
+                            if (e is CancellationException) throw e
+                            Timber.tag(TAG).w(e, "liked songs continuation failed")
+                        }
+                        .getOrNull() ?: break
+                    pagesFetched++
+                    if (page.first.isNotEmpty()) {
+                        _uiState.update { state ->
+                            val seen = state.likedTracks.mapTo(HashSet()) { it.videoId }
+                            state.copy(
+                                likedTracks = state.likedTracks + page.first.filter { it.videoId !in seen }
+                            )
+                        }
+                    }
+                    continuation = page.second
+                }
+                if (continuation != null) {
+                    Timber.tag(TAG).w("liked songs truncated at %d pages", MAX_LIKED_PAGES)
                 }
             }
         }
@@ -94,5 +120,8 @@ class YtLibraryViewModel @Inject constructor(
 
     private companion object {
         const val TAG = "YtLibraryViewModel"
+
+        /** Backstop against a runaway continuation chain (~50 songs/page → 10k songs). */
+        const val MAX_LIKED_PAGES = 200
     }
 }
