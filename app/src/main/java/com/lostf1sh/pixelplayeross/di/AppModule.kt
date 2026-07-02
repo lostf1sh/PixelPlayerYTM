@@ -228,14 +228,16 @@ object AppModule {
         lrcLibApiService: LrcLibApiService,
         lyricsDao: LyricsDao,
         okHttpClient: OkHttpClient,
-        userPreferencesRepository: UserPreferencesRepository
+        userPreferencesRepository: UserPreferencesRepository,
+        youTubeRepository: com.lostf1sh.pixelplayeross.data.youtube.YouTubeRepository
     ): LyricsRepository {
         return LyricsRepositoryImpl(
             context = context,
             lrcLibApiService = lrcLibApiService,
             lyricsDao = lyricsDao,
             okHttpClient = okHttpClient,
-            userPreferencesRepository = userPreferencesRepository
+            userPreferencesRepository = userPreferencesRepository,
+            youTubeRepository = youTubeRepository
         )
     }
 

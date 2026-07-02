@@ -482,6 +482,47 @@ internal object YouTubeResponseParser {
     private val QUERY_SIZE = Regex("""=w\d+-h\d+""")
     private val PATH_SIZE = Regex("""w\d+-h\d+""")
 
+    // ────────────────────────── Lyrics ──────────────────────────
+
+    /**
+     * The lyrics tab's browseId (`MPLYt…`) from a watch-next (`next`) response, or null
+     * when the track has no lyrics tab at all.
+     */
+    fun lyricsBrowseId(root: JsonObject): String? =
+        root.obj("contents").obj("singleColumnMusicWatchNextResultsRenderer")
+            .obj("tabbedRenderer").obj("watchNextTabbedResultsRenderer")
+            .arr("tabs").objects()
+            .mapNotNull {
+                it.obj("tabRenderer").obj("endpoint").obj("browseEndpoint").str("browseId")
+            }
+            .firstOrNull { it.startsWith("MPLYt") }
+
+    /**
+     * Time-synced lyric lines (`startTimeMs` → text) from a mobile-client lyrics browse.
+     * Only mobile clients (ANDROID_MUSIC/IOS_MUSIC) are served `timedLyricsModel`; web
+     * gets a plain description shelf. Null when the response only has static lyrics.
+     */
+    fun timedLyricsLines(root: JsonObject): List<Pair<Int, String>>? {
+        val timed = root.obj("contents").obj("elementRenderer").obj("newElement")
+            .obj("type").obj("componentType").obj("model").obj("timedLyricsModel")
+            .obj("lyricsData").arr("timedLyricsData") ?: return null
+        return timed.objects()
+            .mapNotNull { line ->
+                val text = line.str("lyricLine") ?: return@mapNotNull null
+                val startMs = line.obj("cueRange").str("startTimeMilliseconds")
+                    ?.toIntOrNull() ?: return@mapNotNull null
+                startMs to text
+            }
+            .toList()
+            .takeIf { it.isNotEmpty() }
+    }
+
+    /** Plain (unsynced) lyrics text from a web-client lyrics browse, or null when absent. */
+    fun plainLyrics(root: JsonObject): String? =
+        root.obj("contents").obj("sectionListRenderer").arr("contents").objAt(0)
+            .obj("musicDescriptionShelfRenderer").obj("description")
+            ?.runsText()?.takeIf { it.isNotBlank() }
+
     // ───────────────────── JsonElement navigation ─────────────────────
 
     private fun JsonObject?.obj(key: String): JsonObject? = this?.get(key) as? JsonObject

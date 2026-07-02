@@ -97,7 +97,8 @@ class LyricsRepositoryImpl @Inject constructor(
     private val lrcLibApiService: LrcLibApiService,
     private val lyricsDao: com.lostf1sh.pixelplayeross.data.database.LyricsDao,
     private val okHttpClient: OkHttpClient,
-    private val userPreferencesRepository: UserPreferencesRepository
+    private val userPreferencesRepository: UserPreferencesRepository,
+    private val youTubeRepository: com.lostf1sh.pixelplayeross.data.youtube.YouTubeRepository
 ) : LyricsRepository {
 
 
@@ -337,15 +338,22 @@ class LyricsRepositoryImpl @Inject constructor(
         val fetchFromApi: Pair<String, suspend () -> Lyrics?> = "API" to { fetchLyricsFromAPI(song) }
         val fetchFromEmbedded: Pair<String, suspend () -> Lyrics?> = "Embedded" to { loadEmbeddedLyricsFromMetadata(song) }
         val fetchFromLocal: Pair<String, suspend () -> Lyrics?> = "Local" to { findLocalLyricsFile(song) }
+        val fetchFromYouTube: Pair<String, suspend () -> Lyrics?> = "YouTube" to { fetchLyricsFromYouTube(song) }
 
         // Try sources in order based on preference, removing remote lookup when it is disabled.
+        // YTM tracks get YouTube Music's own (often time-synced) lyrics first — matched by
+        // videoId rather than fuzzy title/artist search, so they're always the right song;
+        // LrcLib stays as the fallback.
+        val isYtmSong = ytmVideoId(song) != null
         val sourceFetchers = when (sourcePreference) {
             LyricsSourcePreference.API_FIRST -> buildList {
+                if (isYtmSong) add(fetchFromYouTube)
                 if (remoteLyricsEnabled) add(fetchFromApi)
                 add(fetchFromEmbedded)
                 add(fetchFromLocal)
             }
             LyricsSourcePreference.EMBEDDED_FIRST -> buildList {
+                if (isYtmSong) add(fetchFromYouTube)
                 add(fetchFromEmbedded)
                 if (remoteLyricsEnabled) add(fetchFromApi)
                 add(fetchFromLocal)
@@ -353,6 +361,7 @@ class LyricsRepositoryImpl @Inject constructor(
             LyricsSourcePreference.LOCAL_FIRST -> buildList {
                 add(fetchFromLocal)
                 add(fetchFromEmbedded)
+                if (isYtmSong) add(fetchFromYouTube)
                 if (remoteLyricsEnabled) add(fetchFromApi)
             }
         }
@@ -367,8 +376,8 @@ class LyricsRepositoryImpl @Inject constructor(
                     // Cache the result
                     lyricsCache.put(cacheKey, lyrics)
                     
-                    // Save to JSON disk cache if from API
-                    if (sourceName == "API") {
+                    // Save to JSON disk cache if fetched from the network
+                    if (sourceName == "API" || sourceName == "YouTube") {
                         saveLocalLyricsJson(song, lyrics)
                     }
                     
@@ -389,6 +398,38 @@ class LyricsRepositoryImpl @Inject constructor(
         val cacheKey = generateCacheKey(song.id)
         loadStoredLyrics(song, cacheKey, includeMemoryCache = true)?.also { stored ->
             lyricsCache.put(cacheKey, stored.first)
+        }
+    }
+
+    /** The videoId behind a YTM song's `ytm://<videoId>` URI, or null for local songs. */
+    private fun ytmVideoId(song: Song): String? =
+        song.contentUriString
+            .takeIf { it.startsWith("ytm://") }
+            ?.removePrefix("ytm://")
+            ?.substringBefore('?')
+            ?.takeIf { it.isNotBlank() }
+
+    /**
+     * YTM's own lyrics (time-synced when available), matched exactly by videoId.
+     * The JSON disk cache is checked first so replays don't re-hit InnerTube.
+     */
+    private suspend fun fetchLyricsFromYouTube(song: Song): Lyrics? = withContext(Dispatchers.IO) {
+        val videoId = ytmVideoId(song) ?: return@withContext null
+
+        loadLocalLyricsJson(song)?.let {
+            Timber.tag(TAG).d("===== LOADED YTM LYRICS FROM JSON DISK CACHE =====")
+            return@withContext it
+        }
+
+        try {
+            youTubeRepository.lyrics(videoId)?.takeIf { it.isValid() }?.also {
+                Timber.tag(TAG).d(
+                    "YTM lyrics found for %s - synced: %s", videoId, !it.synced.isNullOrEmpty()
+                )
+            }
+        } catch (e: Exception) {
+            Timber.tag(TAG).w("YTM lyrics fetch failed for $videoId: ${e.message}")
+            null
         }
     }
 

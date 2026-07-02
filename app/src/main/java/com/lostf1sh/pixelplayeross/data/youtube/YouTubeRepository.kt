@@ -1,5 +1,7 @@
 package com.lostf1sh.pixelplayeross.data.youtube
 
+import com.lostf1sh.pixelplayeross.data.model.Lyrics
+import com.lostf1sh.pixelplayeross.data.model.SyncedLine
 import com.lostf1sh.pixelplayeross.data.model.YtBrowsePage
 import com.lostf1sh.pixelplayeross.data.model.YtFeedPage
 import com.lostf1sh.pixelplayeross.data.model.YtRadioPage
@@ -7,6 +9,7 @@ import com.lostf1sh.pixelplayeross.data.model.YtSearchPage
 import com.lostf1sh.pixelplayeross.data.model.YtShelf
 import com.lostf1sh.pixelplayeross.data.model.YtShelfEntry
 import com.lostf1sh.pixelplayeross.data.model.YtTrack
+import com.lostf1sh.pixelplayeross.data.network.youtube.InnerTubeClientId
 import com.lostf1sh.pixelplayeross.data.network.youtube.InnerTubeService
 import com.lostf1sh.pixelplayeross.data.network.youtube.YouTubeResponseParser
 import com.lostf1sh.pixelplayeross.data.network.youtube.YtBrowseIds
@@ -109,6 +112,40 @@ class YouTubeRepository @Inject constructor(
         YouTubeResponseParser.radioPage(
             innerTube.call("next") { put("continuation", continuation) }
         )
+
+    // ─────────────────────────── Lyrics ───────────────────────────
+
+    /**
+     * YTM's own lyrics for a track: time-synced when available (only mobile clients are
+     * served `timedLyricsModel`), otherwise the plain text the web client shows. Null
+     * when the track has no lyrics on YTM.
+     */
+    suspend fun lyrics(videoId: String): Lyrics? {
+        val browseId = YouTubeResponseParser.lyricsBrowseId(
+            innerTube.call("next") { put("videoId", videoId) }
+        ) ?: return null
+
+        val synced = runCatching {
+            YouTubeResponseParser.timedLyricsLines(
+                innerTube.call("browse", InnerTubeClientId.ANDROID_MUSIC) {
+                    put("browseId", browseId)
+                }
+            )
+        }.getOrNull()
+        if (!synced.isNullOrEmpty()) {
+            return Lyrics(
+                synced = synced.map { (timeMs, line) -> SyncedLine(time = timeMs, line = line) },
+                areFromRemote = true,
+            )
+        }
+
+        val plain = runCatching {
+            YouTubeResponseParser.plainLyrics(
+                innerTube.call("browse") { put("browseId", browseId) }
+            )
+        }.getOrNull() ?: return null
+        return Lyrics(plain = plain.lines(), areFromRemote = true)
+    }
 
     // ─────────────────────────── Library ───────────────────────────
 
