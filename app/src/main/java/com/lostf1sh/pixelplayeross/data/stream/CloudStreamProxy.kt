@@ -135,7 +135,12 @@ abstract class CloudStreamProxy<K : Any>(
     fun getProxyUrl(id: K): String {
         if (actualPort == 0) return ""
         if (!validateId(id)) return ""
-        return "http://127.0.0.1:$actualPort$routePrefix/${formatIdForUrl(id)}?t=$sessionToken"
+        return buildString {
+            append("http://127.0.0.1:").append(actualPort)
+            append(routePrefix).append('/').append(formatIdForUrl(id))
+            append("?t=").append(sessionToken)
+            proxyUrlExtraParams(id)?.let { append('&').append(it) }
+        }
     }
 
     /**
@@ -196,6 +201,13 @@ abstract class CloudStreamProxy<K : Any>(
      * URL caches and server access logs).
      */
     protected open fun upstreamHeaders(streamUrl: String): Map<String, String> = emptyMap()
+
+    /**
+     * Extra query params (already encoded, without a leading separator) appended to proxy
+     * URLs — e.g. a disk-cache discriminator. The route handler ignores them; they exist
+     * for the player-side data source layer.
+     */
+    protected open fun proxyUrlExtraParams(id: K): String? = null
 
     /**
      * The `Range` header to send upstream, given the (validated) client range — null means

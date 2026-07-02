@@ -18,9 +18,13 @@ import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.datasource.TransferListener
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -35,6 +39,7 @@ import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.mp3.Mp3Extractor
 import androidx.media3.extractor.flac.FlacExtractor
 import com.lostf1sh.pixelplayeross.data.model.TransitionSettings
+import com.lostf1sh.pixelplayeross.data.stream.youtube.YtStreamFormatStore
 import com.lostf1sh.pixelplayeross.utils.envelope
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -168,7 +173,8 @@ internal fun shouldDisableAudioOffloadOnEarlyBuffering(
 @Singleton
 class DualPlayerEngine @Inject constructor(
     @param:ApplicationContext private val context: Context,
-    private val youTubeStreamProxy: com.lostf1sh.pixelplayeross.data.stream.youtube.YouTubeStreamProxy
+    private val youTubeStreamProxy: com.lostf1sh.pixelplayeross.data.stream.youtube.YouTubeStreamProxy,
+    @param:com.lostf1sh.pixelplayeross.data.stream.youtube.YtStreamCache private val ytStreamCache: SimpleCache
 ) {
     private companion object {
         private const val AUDIO_OFFLOAD_STALL_FALLBACK_MS = 4_000L
@@ -897,7 +903,12 @@ class DualPlayerEngine @Inject constructor(
                     val originalUri = uri.toString()
                     val resolved = resolvedUriCache.get(originalUri)
                         ?: resolveReadyCloudProxyUri(uri)?.also { proxyUri ->
-                            resolvedUriCache.put(originalUri, proxyUri)
+                            // Only memoize proxy URLs that carry the disk-cache discriminator;
+                            // a cold (never-resolved) video lacks it, and memoizing would pin
+                            // it to the cache-bypass path for the rest of the session.
+                            if (ytmDiskCacheKey(proxyUri) != null) {
+                                resolvedUriCache.put(originalUri, proxyUri)
+                            }
                         }
                     if (resolved != null) {
                         return dataSpec.buildUpon().setUri(resolved).build()
@@ -909,7 +920,23 @@ class DualPlayerEngine @Inject constructor(
         }
         
         val dataSourceFactory = DefaultDataSource.Factory(context)
-        val resolvingFactory = ResolvingDataSource.Factory(dataSourceFactory, resolver)
+        // YTM proxy streams read/write through the disk cache, keyed by (videoId, itag) —
+        // the itag rides on the proxy URL (YtStreamFormatStore), so the key is stable across
+        // sessions even though the loopback port and session token change every launch, and
+        // a fully cached track replays with zero network. URIs without the itag (format not
+        // resolved yet) and non-YTM URIs (local files, plain http) bypass the cache.
+        val ytmCacheFactory = CacheDataSource.Factory()
+            .setCache(ytStreamCache)
+            .setUpstreamDataSourceFactory(dataSourceFactory)
+            .setCacheKeyFactory { spec -> ytmDiskCacheKey(spec.uri) ?: spec.key ?: spec.uri.toString() }
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        val routedFactory = DataSource.Factory {
+            YtmCacheRoutingDataSource(
+                cached = ytmCacheFactory.createDataSource(),
+                direct = dataSourceFactory.createDataSource(),
+            )
+        }
+        val resolvingFactory = ResolvingDataSource.Factory(routedFactory, resolver)
         val extractorsFactory = DefaultExtractorsFactory()
             // FLAG_WORKAROUND_IGNORE_EDIT_LISTS intentionally removed: it breaks Opus files
             // by discarding the edit list that encodes the pre-skip (encoder delay), causing
@@ -1009,7 +1036,11 @@ class DualPlayerEngine @Inject constructor(
         }
 
         if (resolved != null) {
-            resolvedUriCache.put(uriString, resolved)
+            // Same guard as the sync resolver: don't pin a discriminator-less (uncacheable)
+            // proxy URL for the session — the next resolve attempt may have the itag.
+            if (ytmDiskCacheKey(resolved) != null) {
+                resolvedUriCache.put(uriString, resolved)
+            }
             return@withContext resolved
         }
         uri
@@ -1320,5 +1351,56 @@ class DualPlayerEngine @Inject constructor(
         playerB?.release()
         playerB = null
         isReleased = true
+    }
+}
+
+/**
+ * The disk-cache key for a resolved YTM loopback-proxy URI, or null if the URI isn't a
+ * YTM proxy stream or doesn't carry its format discriminator yet. Derived from the
+ * stable parts only (videoId + itag) — the port and session token change every launch.
+ */
+private fun ytmDiskCacheKey(uri: Uri): String? {
+    if (uri.host != "127.0.0.1" || uri.path?.startsWith("/ytm/") != true) return null
+    val videoId = uri.lastPathSegment?.takeIf { it.isNotBlank() } ?: return null
+    val itag = uri.getQueryParameter("itag")?.toIntOrNull() ?: return null
+    return YtStreamFormatStore.cacheKey(videoId, itag)
+}
+
+/**
+ * Per-open router in front of the two upstream paths: YTM proxy URIs with a cache key go
+ * through [CacheDataSource]; everything else (local files, plain http, discriminator-less
+ * proxy URIs) opens directly, so local bytes are never duplicated onto disk and streams
+ * whose exact encoding is unknown are never written under a guessable key.
+ */
+@OptIn(UnstableApi::class)
+private class YtmCacheRoutingDataSource(
+    private val cached: DataSource,
+    private val direct: DataSource,
+) : DataSource {
+    private var active: DataSource? = null
+
+    override fun addTransferListener(transferListener: TransferListener) {
+        cached.addTransferListener(transferListener)
+        direct.addTransferListener(transferListener)
+    }
+
+    override fun open(dataSpec: DataSpec): Long {
+        val target = if (ytmDiskCacheKey(dataSpec.uri) != null) cached else direct
+        active = target
+        return target.open(dataSpec)
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+        checkNotNull(active) { "read() before open()" }.read(buffer, offset, length)
+
+    override fun getUri(): Uri? = active?.uri
+
+    override fun getResponseHeaders(): Map<String, List<String>> =
+        active?.responseHeaders ?: emptyMap()
+
+    override fun close() {
+        val source = active
+        active = null
+        source?.close()
     }
 }

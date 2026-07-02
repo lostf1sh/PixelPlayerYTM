@@ -20,6 +20,7 @@ import javax.inject.Singleton
 @Singleton
 class YouTubeStreamProxy @Inject constructor(
     private val resolver: YouTubeStreamResolver,
+    private val formatStore: YtStreamFormatStore,
     okHttpClient: OkHttpClient,
 ) : CloudStreamProxy<String>(okHttpClient) {
 
@@ -79,6 +80,14 @@ class YouTubeStreamProxy @Inject constructor(
         val hasSvpuc = uri.getQueryParameter("svpuc") != null
         return hasSvpuc || clientName == InnerTubeClientId.IOS.clientName
     }
+
+    /**
+     * The last-known audio itag rides on the proxy URL so the player's disk cache can key
+     * spans by (videoId, itag) — see [YtStreamFormatStore]. Absent until the first resolve
+     * of a video; the data source layer then bypasses the disk cache for that open.
+     */
+    override fun proxyUrlExtraParams(id: String): String? =
+        formatStore.itagFor(id)?.let { "itag=$it" }
 
     override fun parseRouteParam(value: String): String? = value.takeIf { it.isNotBlank() }
 

@@ -39,6 +39,7 @@ class YouTubeStreamResolver @Inject constructor(
     private val accountStore: YtAccountStore,
     private val visitorStore: YtVisitorStore,
     private val poTokenGenerator: PoTokenGenerator,
+    private val formatStore: YtStreamFormatStore,
     private val json: Json,
 ) {
     private val cache = LinkedHashMap<String, ResolvedStream>()
@@ -85,6 +86,11 @@ class YouTubeStreamResolver @Inject constructor(
         } else {
             null
         }
+        // A web client without a pot only yields `svpuc`-throttled (~1 MB) streams, so don't
+        // waste it — bail to the next client (WEB_CREATOR, then the no-pot ANDROID_VR).
+        if (client.useWebPoTokens && poToken == null) {
+            throw StreamResolutionException("no PoToken for ${client.clientName}")
+        }
 
         val root = innerTube.call("player", client) {
             put("videoId", videoId)
@@ -109,6 +115,8 @@ class YouTubeStreamResolver @Inject constructor(
         }
 
         val format = bestAudioFormat(response) ?: return null
+        // Pin the chosen encoding for the disk cache (evicts stale spans if it changed).
+        format.itag?.let { formatStore.record(videoId, it) }
         val url = newPipe.resolveStreamUrl(videoId, format, poToken?.streamingDataPoToken)
             ?: throw StreamResolutionException("could not descramble stream url")
 
@@ -139,9 +147,14 @@ class YouTubeStreamResolver @Inject constructor(
     private companion object {
         const val TAG = "YtStreamResolver"
         const val CACHE_LIMIT = 60
-        // WEB_REMIX + BotGuard PoToken is the reliable path: it returns full-quality music
-        // streams whose `svpuc` throttle the pot lifts. (IOS returns plain URLs but has no
-        // pot, so googlevideo caps it at ~1 MB — unusable for playback.)
-        val CLIENT_ORDER = listOf(InnerTubeClientId.WEB_REMIX)
+        // WEB_REMIX + BotGuard PoToken is the reliable primary path. WEB_CREATOR (also pot)
+        // covers some age-restricted tracks; ANDROID_VR is the no-pot anonymous last resort
+        // for when the WebView pot engine is unavailable. (Plain IOS is omitted: no pot means
+        // googlevideo `svpuc`-caps it at ~1 MB — worse than useless.)
+        val CLIENT_ORDER = listOf(
+            InnerTubeClientId.WEB_REMIX,
+            InnerTubeClientId.WEB_CREATOR,
+            InnerTubeClientId.ANDROID_VR,
+        )
     }
 }
