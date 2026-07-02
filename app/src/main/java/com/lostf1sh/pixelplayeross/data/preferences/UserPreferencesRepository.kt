@@ -208,6 +208,7 @@ constructor(
 
         // YouTube Music
         val YTM_NORMALIZATION_ENABLED = booleanPreferencesKey("ytm_normalization_enabled")
+        val YTM_AUDIO_QUALITY = stringPreferencesKey("ytm_audio_quality")
 
         // Developer Options
         val ALBUM_ART_QUALITY = stringPreferencesKey("album_art_quality")
@@ -626,6 +627,19 @@ constructor(
     suspend fun setYtmNormalizationEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.YTM_NORMALIZATION_ENABLED] = enabled
+        }
+    }
+
+    val ytmAudioQualityFlow: Flow<com.lostf1sh.pixelplayeross.data.model.YtAudioQuality> =
+            dataStore.data.map { preferences ->
+                com.lostf1sh.pixelplayeross.data.model.YtAudioQuality.fromName(
+                    preferences[PreferencesKeys.YTM_AUDIO_QUALITY]
+                )
+            }.distinctUntilChanged()
+
+    suspend fun setYtmAudioQuality(quality: com.lostf1sh.pixelplayeross.data.model.YtAudioQuality) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.YTM_AUDIO_QUALITY] = quality.name
         }
     }
 

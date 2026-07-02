@@ -3,8 +3,11 @@ package com.lostf1sh.pixelplayeross.data.stream.youtube
 import com.lostf1sh.pixelplayeross.data.network.youtube.InnerTubeClientId
 import com.lostf1sh.pixelplayeross.data.network.youtube.InnerTubeService
 import com.lostf1sh.pixelplayeross.data.network.youtube.YtVisitorStore
+import com.lostf1sh.pixelplayeross.data.model.YtAudioQuality
 import com.lostf1sh.pixelplayeross.data.network.youtube.auth.YtAccountStore
+import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.stream.youtube.potoken.PoTokenGenerator
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -40,6 +43,7 @@ class YouTubeStreamResolver @Inject constructor(
     private val visitorStore: YtVisitorStore,
     private val poTokenGenerator: PoTokenGenerator,
     private val formatStore: YtStreamFormatStore,
+    private val userPreferencesRepository: UserPreferencesRepository,
     private val json: Json,
 ) {
     private val cache = LinkedHashMap<String, ResolvedStream>()
@@ -135,15 +139,19 @@ class YouTubeStreamResolver @Inject constructor(
         )
     }
 
-    private fun bestAudioFormat(response: PlayerResponse): PlayerResponse.StreamingData.Format? {
+    private suspend fun bestAudioFormat(response: PlayerResponse): PlayerResponse.StreamingData.Format? {
         val streaming = response.streamingData ?: return null
         val audio = (streaming.adaptiveFormats + streaming.formats)
             .filter { it.isAudio && it.hasSomeSource }
             .ifEmpty { streaming.formats.filter { it.hasSomeSource } }
         if (audio.isEmpty()) return null
 
-        // Premium accounts can pull higher bitrates; anonymous playback caps at ~160 kbps.
-        val ceiling = if (accountStore.isSignedIn.value) Long.MAX_VALUE else 160_000L
+        val ceiling = when (userPreferencesRepository.ytmAudioQualityFlow.first()) {
+            YtAudioQuality.HIGH -> Long.MAX_VALUE
+            YtAudioQuality.LOW -> 64_000L
+            // Premium accounts can pull higher bitrates; anonymous playback caps at ~160 kbps.
+            YtAudioQuality.AUTO -> if (accountStore.isSignedIn.value) Long.MAX_VALUE else 160_000L
+        }
         val byBitrateDesc = audio.sortedByDescending { it.effectiveBitrate }
         return byBitrateDesc.firstOrNull { it.effectiveBitrate <= ceiling } ?: byBitrateDesc.last()
     }

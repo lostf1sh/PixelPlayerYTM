@@ -262,4 +262,30 @@
     <string name="cd_remove_from_history">Remove from history</string>
     <string name="cd_clear_search">Clear search</string>
     <string name="backup_history_modules_line">%1$d modules · v%2$s · schema v%3$d</string>
+
+    <!-- YouTube Music settings -->
+    <string name="settings_category_ytm_title">YouTube Music</string>
+    <string name="settings_category_ytm_subtitle">Account, streaming quality, and cache</string>
+    <string name="setcat_ytm_account">Account</string>
+    <string name="setcat_ytm_signed_in_title">Signed in</string>
+    <string name="setcat_ytm_signed_in_subtitle">Your library, likes, and premium quality are available</string>
+    <string name="setcat_ytm_signed_out_title">Not signed in</string>
+    <string name="setcat_ytm_signed_out_subtitle">Sign in to access your library and likes</string>
+    <string name="setcat_ytm_sign_in">Sign in</string>
+    <string name="setcat_ytm_sign_out">Sign out</string>
+    <string name="setcat_ytm_sign_out_subtitle">Removes the saved session from this device</string>
+    <string name="setcat_ytm_playback">Playback</string>
+    <string name="setcat_ytm_audio_quality_label">Audio quality</string>
+    <string name="setcat_ytm_audio_quality_desc">Bitrate to request for YouTube Music streams</string>
+    <string name="setcat_ytm_quality_auto">Auto</string>
+    <string name="setcat_ytm_quality_high">High</string>
+    <string name="setcat_ytm_quality_low">Data saver</string>
+    <string name="setcat_ytm_normalization_title">Loudness normalization</string>
+    <string name="setcat_ytm_normalization_subtitle">Level out volume between tracks using YouTube\'s loudness data</string>
+    <string name="setcat_ytm_storage">Storage</string>
+    <string name="setcat_ytm_cache_title">Stream cache</string>
+    <string name="setcat_ytm_cache_subtitle">%1$s of played music stored for instant and offline replays</string>
+    <string name="setcat_ytm_clear_cache_title">Clear stream cache</string>
+    <string name="setcat_ytm_clear_cache_subtitle">Deletes all cached audio</string>
+    <string name="setcat_ytm_cache_cleared">Stream cache cleared</string>
 </resources>

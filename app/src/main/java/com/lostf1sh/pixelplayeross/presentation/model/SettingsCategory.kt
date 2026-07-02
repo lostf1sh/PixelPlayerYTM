@@ -19,6 +19,12 @@ enum class SettingsCategory(
     val icon: ImageVector? = null,
     val iconRes: Int? = null
 ) {
+    YOUTUBE_MUSIC(
+        id = "youtube_music",
+        titleRes = R.string.settings_category_ytm_title,
+        subtitleRes = R.string.settings_category_ytm_subtitle,
+        iconRes = R.drawable.rounded_play_circle_24
+    ),
     LIBRARY(
         id = "library",
         titleRes = R.string.settings_category_library_title,

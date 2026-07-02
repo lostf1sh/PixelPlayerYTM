@@ -60,6 +60,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Login
+import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.ClearAll
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Info
@@ -379,6 +381,100 @@ fun SettingsCategoryScreen(
                     modifier = Modifier.background(Color.Transparent)
                ) {
                     when (category) {
+                        SettingsCategory.YOUTUBE_MUSIC -> {
+                            val ytSettingsViewModel: com.lostf1sh.pixelplayeross.presentation.viewmodel.YtSettingsViewModel = hiltViewModel()
+                            val ytSignedIn by ytSettingsViewModel.isSignedIn.collectAsStateWithLifecycle()
+                            val ytNormalization by ytSettingsViewModel.normalizationEnabled.collectAsStateWithLifecycle()
+                            val ytQuality by ytSettingsViewModel.audioQuality.collectAsStateWithLifecycle()
+                            val ytCacheBytes by ytSettingsViewModel.cacheBytes.collectAsStateWithLifecycle()
+
+                            SettingsSubsection(title = stringResource(R.string.setcat_ytm_account)) {
+                                if (ytSignedIn) {
+                                    SettingsItem(
+                                        title = stringResource(R.string.setcat_ytm_signed_in_title),
+                                        subtitle = stringResource(R.string.setcat_ytm_signed_in_subtitle),
+                                        leadingIcon = { Icon(Icons.Outlined.Person, null, tint = MaterialTheme.colorScheme.secondary) },
+                                        onClick = {}
+                                    )
+                                    SettingsItem(
+                                        title = stringResource(R.string.setcat_ytm_sign_out),
+                                        subtitle = stringResource(R.string.setcat_ytm_sign_out_subtitle),
+                                        leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Logout, null, tint = MaterialTheme.colorScheme.error) },
+                                        onClick = { ytSettingsViewModel.signOut() }
+                                    )
+                                } else {
+                                    SettingsItem(
+                                        title = stringResource(R.string.setcat_ytm_signed_out_title),
+                                        subtitle = stringResource(R.string.setcat_ytm_signed_out_subtitle),
+                                        leadingIcon = { Icon(Icons.Outlined.Person, null, tint = MaterialTheme.colorScheme.secondary) },
+                                        onClick = {}
+                                    )
+                                    SettingsItem(
+                                        title = stringResource(R.string.setcat_ytm_sign_in),
+                                        subtitle = stringResource(R.string.setcat_ytm_signed_out_subtitle),
+                                        leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Login, null, tint = MaterialTheme.colorScheme.secondary) },
+                                        trailingIcon = { Icon(Icons.Rounded.ChevronRight, stringResource(R.string.cd_open), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                        onClick = { navController.navigateSafely(Screen.YtLogin.route) }
+                                    )
+                                }
+                            }
+
+                            SettingsSubsection(title = stringResource(R.string.setcat_ytm_playback)) {
+                                ThemeSelectorItem(
+                                    label = stringResource(R.string.setcat_ytm_audio_quality_label),
+                                    description = stringResource(R.string.setcat_ytm_audio_quality_desc),
+                                    options = mapOf(
+                                        com.lostf1sh.pixelplayeross.data.model.YtAudioQuality.AUTO.name to stringResource(R.string.setcat_ytm_quality_auto),
+                                        com.lostf1sh.pixelplayeross.data.model.YtAudioQuality.HIGH.name to stringResource(R.string.setcat_ytm_quality_high),
+                                        com.lostf1sh.pixelplayeross.data.model.YtAudioQuality.LOW.name to stringResource(R.string.setcat_ytm_quality_low)
+                                    ),
+                                    selectedKey = ytQuality.name,
+                                    onSelectionChanged = { key ->
+                                        ytSettingsViewModel.setAudioQuality(
+                                            com.lostf1sh.pixelplayeross.data.model.YtAudioQuality.fromName(key)
+                                        )
+                                    },
+                                    leadingIcon = { Icon(Icons.Outlined.PlayCircle, null, tint = MaterialTheme.colorScheme.secondary) }
+                                )
+                                SwitchSettingItem(
+                                    title = stringResource(R.string.setcat_ytm_normalization_title),
+                                    subtitle = stringResource(R.string.setcat_ytm_normalization_subtitle),
+                                    checked = ytNormalization,
+                                    onCheckedChange = { ytSettingsViewModel.setNormalizationEnabled(it) },
+                                    leadingIcon = { Icon(painterResource(R.drawable.rounded_music_note_24), null, tint = MaterialTheme.colorScheme.secondary) }
+                                )
+                            }
+
+                            SettingsSubsection(
+                                title = stringResource(R.string.setcat_ytm_storage),
+                                addBottomSpace = false
+                            ) {
+                                SettingsItem(
+                                    title = stringResource(R.string.setcat_ytm_cache_title),
+                                    subtitle = stringResource(
+                                        R.string.setcat_ytm_cache_subtitle,
+                                        android.text.format.Formatter.formatFileSize(context, ytCacheBytes)
+                                    ),
+                                    leadingIcon = { Icon(Icons.Outlined.Folder, null, tint = MaterialTheme.colorScheme.secondary) },
+                                    onClick = {}
+                                )
+                                SettingsItem(
+                                    title = stringResource(R.string.setcat_ytm_clear_cache_title),
+                                    subtitle = stringResource(R.string.setcat_ytm_clear_cache_subtitle),
+                                    leadingIcon = { Icon(Icons.Outlined.ClearAll, null, tint = MaterialTheme.colorScheme.error) },
+                                    onClick = {
+                                        ytSettingsViewModel.clearStreamCache {
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                context.getString(R.string.setcat_ytm_cache_cleared),
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
                         SettingsCategory.LIBRARY -> {
                             SettingsSubsection(title = stringResource(R.string.setcat_library_structure)) {
                                 SettingsItem(
