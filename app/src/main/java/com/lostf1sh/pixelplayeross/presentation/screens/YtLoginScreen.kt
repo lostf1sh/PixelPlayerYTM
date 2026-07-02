@@ -28,6 +28,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,10 +48,11 @@ import com.lostf1sh.pixelplayeross.data.model.YtAccountInfo
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.YtLoginViewModel
 
 /**
- * Google sign-in via an in-app WebView, on the music-templated ServiceLogin flow that
- * surfaces the device's already-signed-in Google accounts for one-tap sign-in. Once the
- * user lands on music.youtube.com signed in, the cookie jar carries a SAPISID session;
- * we capture it and persist. If already signed in, offers sign-out instead.
+ * Google sign-in via an in-app WebView, opening on the account chooser: every account
+ * that ever signed in here stays remembered in the WebView cookie jar (sign-out keeps
+ * the jar), so all sign-ins after the first are a one-tap pick. Once the user lands on
+ * music.youtube.com signed in, the cookie jar carries a SAPISID session; we capture it
+ * and persist. If already signed in, offers sign-out instead.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,9 +86,11 @@ fun YtLoginScreen(
                     .padding(horizontal = 32.dp),
                 accountInfo = accountInfo,
                 onSignOut = {
-                    // Drop the WebView's cookie jar too — otherwise reopening this screen
-                    // silently re-captures the just-signed-out session.
-                    CookieManager.getInstance().removeAllCookies(null)
+                    // Deliberately KEEP the WebView cookie jar: Google's account chooser
+                    // remembers the signed-in accounts that live there, which is what makes
+                    // the next sign-in a one-tap pick instead of a full password + 2FA run.
+                    // The capture loop only reads cookies once the user lands on
+                    // music.youtube.com, so the kept session is never re-captured silently.
                     viewModel.signOut()
                 },
             )
@@ -111,17 +117,26 @@ private fun LoginWebView(
     modifier: Modifier,
     onCookieCaptured: (String?) -> Boolean,
 ) {
+    var webView by remember { mutableStateOf<WebView?>(null) }
+
     // The cookie jar commits the SAPISID cookies asynchronously relative to page
     // navigation — after a 2FA challenge the final music.youtube.com land often fires
     // onPageFinished *before* the session cookies are visible, and no further page
     // loads happen. So capture by polling the jar, not by page events: flush + read
     // every half second until a usable session shows up.
+    //
+    // The poll is gated on the WebView actually being on music.youtube.com: the jar may
+    // still hold a valid session from before a sign-out (kept on purpose, it feeds the
+    // account chooser), and capturing it from the chooser page would sign the user back
+    // in before they had a chance to pick a different account.
     LaunchedEffect(Unit) {
         val cookieManager = CookieManager.getInstance()
         while (true) {
-            cookieManager.flush()
-            val cookie = cookieManager.getCookie("https://music.youtube.com")
-            if (onCookieCaptured(cookie)) break
+            if (webView?.url?.contains("music.youtube.com") == true) {
+                cookieManager.flush()
+                val cookie = cookieManager.getCookie("https://music.youtube.com")
+                if (onCookieCaptured(cookie)) break
+            }
             delay(500)
         }
     }
@@ -136,16 +151,16 @@ private fun LoginWebView(
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 // Deliberately keep the STOCK WebView UA (with "; wv" and Build/…) and the
-                // X-Requested-With header: on this music ServiceLogin flow Google treats a
-                // recognized Android WebView as a device sign-in and offers the phone's
-                // already-signed-in Google accounts as one-tap choices — no password, no
-                // 2FA re-entry. Spoofing a browser UA here (the old approach) suppressed
-                // that account picker and forced a full manual login.
+                // X-Requested-With header — this music sign-in flow accepts recognized
+                // Android WebViews (no "browser may not be secure" block), unlike the
+                // generic one the old spoofed-UA approach was working around.
                 webViewClient = WebViewClient()
-                loadUrl(LOGIN_URL)
+                loadUrl(ACCOUNT_CHOOSER_URL)
+                webView = this
             }
         },
         onRelease = { view ->
+            webView = null
             view.stopLoading()
             view.destroy()
         },
@@ -153,13 +168,16 @@ private fun LoginWebView(
 }
 
 /**
- * The music-templated Google sign-in used by every working third-party YTM client
- * (InnerTune, Metrolist, PixelMusic): unlike the generic ServiceLogin, this flow is not
- * hit by Google's "this browser may not be secure" WebView block and surfaces the
- * device-account chooser.
+ * Google's account chooser, continuing into the music-templated youtube sign-in used by
+ * every working third-party YTM client (InnerTune, Metrolist, PixelMusic).
+ *
+ * With accounts remembered in the WebView cookie jar (any previous in-app sign-in —
+ * sign-out keeps the jar for exactly this reason) this shows a one-tap "Choose an
+ * account" list; with an empty jar it falls through to the normal sign-in form, which
+ * the user only ever has to complete once per account.
  */
-private const val LOGIN_URL =
-    "https://accounts.google.com/ServiceLogin?ltmpl=music&service=youtube&uilel=3&passive=true&continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26hl%3Den%26next%3Dhttps%253A%252F%252Fmusic.youtube.com%252F&hl=en"
+private const val ACCOUNT_CHOOSER_URL =
+    "https://accounts.google.com/AccountChooser?service=youtube&ltmpl=music&continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26hl%3Den%26next%3Dhttps%253A%252F%252Fmusic.youtube.com%252F&hl=en"
 
 @Composable
 private fun SignedInContent(
